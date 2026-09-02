@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import re
 import requests
+import json  # <-- TAMBAHKAN BARIS INI
 import streamlit.components.v1 as components
 
 # ==============================================================================
