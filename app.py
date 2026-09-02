@@ -632,67 +632,68 @@ else:
             # 1. PENCARIAN BARANG DINAMIS (ALA WA WEB)
             col_search, col_reset = st.columns([5, 1])
             with col_search:
+                # Kolom pencarian responsif
                 search_query = st.text_input(
                     "🔍 Cari Barang atau Kode:",
                     value=st.session_state.search_query_val,
-                    placeholder="🔍 Ketik nama barang (langsung terfilter dinamis tanpa tekan Enter)...",
+                    placeholder="🔍 Ketik nama barang (langsung terfilter seperti WA Web)...",
                     key="sticky_search_input",
                     label_visibility="collapsed",
                 )
                 st.session_state.search_query_val = search_query
 
             with col_reset:
-                # Tombol reset untuk menghapus teks ketikan saja
                 if st.button("❌ Reset", use_container_width=True):
                     st.session_state.search_query_val = ""
                     st.session_state.sticky_search_input = ""
                     st.rerun()
 
-            # Script client-side robust agar pencarian langsung merespons setiap ketikan tanpa perlu tekan Enter
+            # Live Search Script ala WhatsApp Web (mendeteksi input keyboard real-time tanpa perlu tekan Enter)
             st.components.v1.html(
                 """
                 <script>
                 (function() {
                     const parentDoc = window.parent.document;
-                    let lastQuery = "";
                     let debounceTimer = null;
+                    let lastValue = "";
 
-                    function attachSearchListener() {
-                        const inputs = parentDoc.querySelectorAll('input[type="text"]');
-                        let targetInput = null;
-                        for (let inp of inputs) {
-                            if (inp.placeholder && inp.placeholder.includes("Ketik nama barang")) {
-                                targetInput = inp;
+                    function setupLiveSearch() {
+                        const allInputs = parentDoc.querySelectorAll('input[type="text"]');
+                        let searchInp = null;
+                        for (let el of allInputs) {
+                            if (el.placeholder && el.placeholder.includes("Ketik nama barang")) {
+                                searchInp = el;
                                 break;
                             }
                         }
 
-                        if (targetInput && !targetInput.dataset.waSearchAttached) {
-                            targetInput.dataset.waSearchAttached = "true";
-                            targetInput.addEventListener('input', function(e) {
-                                const currentVal = e.target.value;
+                        if (searchInp && !searchInp.dataset.waLiveSearchBound) {
+                            searchInp.dataset.waLiveSearchBound = "true";
+                            searchInp.addEventListener('input', function(e) {
+                                const val = e.target.value;
                                 clearTimeout(debounceTimer);
                                 debounceTimer = setTimeout(() => {
-                                    if (currentVal !== lastQuery) {
-                                        lastQuery = currentVal;
-                                        // Kirim event change dan tombol Enter sintetis ke input Streamlit
-                                        targetInput.dispatchEvent(new Event('change', { bubbles: true }));
-                                        const enterEvent = new KeyboardEvent('keydown', {
+                                    if (val !== lastValue) {
+                                        lastValue = val;
+                                        // Trigger sync Streamlit secara instan
+                                        searchInp.dispatchEvent(new Event('change', { bubbles: true }));
+                                        const enterKey = new KeyboardEvent('keydown', {
+                                            bubbles: true,
+                                            cancelable: true,
                                             key: 'Enter',
                                             code: 'Enter',
                                             keyCode: 13,
-                                            which: 13,
-                                            bubbles: true
+                                            which: 13
                                         });
-                                        targetInput.dispatchEvent(enterEvent);
+                                        searchInp.dispatchEvent(enterKey);
                                     }
-                                }, 350);
+                                }, 300);
                             });
                         }
                     }
 
-                    attachSearchListener();
-                    setInterval(attachSearchListener, 600);
+                    setupLiveSearch();
+                    setInterval(setupLiveSearch, 500);
                 })();
                 </script>
                 """,
@@ -714,7 +715,7 @@ else:
             filtered_df.insert(0, "Pilih", False)
             filtered_df["Jumlah (Qty)"] = 1
 
-            # 2. TABEL BARANG (Keterangan dihilangkan dari tabel pencarian)
+            # 2. TABEL BARANG (Katalog Bersih Tanpa Kolom Keterangan)
             if search_query:
                 st.caption(
                     f"🔍 Ditemukan **{len(filtered_df)}** barang yang cocok dengan kata kunci :blue['{search_query}']"
@@ -802,87 +803,79 @@ else:
                         " terlebih dahulu."
                     )
 
-            # 3. KERANJANG BELANJA DEPARTEMEN
+            # 3. KERANJANG BELANJA DEPARTEMEN (BISA DI-EDIT SEBELUM SUBMIT KE ADMIN)
             st.markdown("---")
-            st.subheader("🛒 Isi Keranjang Belanja (Belum Disubmit)")
+            st.subheader("🛒 Isi Keranjang Belanja (Bisa Diedit Sebelum Disubmit ke Admin)")
+            st.caption("💡 Anda dapat mengubah **Qty**, menulis/mengedit **Keterangan Keperluan**, atau **Menghapus Item** agar tidak salah kirim ke admin.")
 
             if st.session_state.keranjang:
-                total_nominal = 0
-                to_delete = None
+                df_cart = pd.DataFrame(st.session_state.keranjang)
+                df_cart["Hapus"] = False
+                if "keterangan" not in df_cart.columns:
+                    df_cart["keterangan"] = ""
+                df_cart["keterangan"] = df_cart["keterangan"].fillna("")
 
-                for c_idx, item in enumerate(st.session_state.keranjang):
-                    total_nominal += item["subtotal"]
-
-                    with st.container():
-                        col_info, col_qty, col_sub, col_del = st.columns([3, 1.5, 2, 0.8])
-
-                        with col_info:
-                            st.markdown(
-                                f"**📌 {item['nama_barang']}** \n<small style='color:"
-                                f" #94a3b8;'>Rp {item['harga']:,.0f} /"
-                                f" {item['satuan']}</small>",
-                                unsafe_allow_html=True,
-                            )
-
-                        with col_qty:
-                            new_qty = st.number_input(
-                                "Qty",
-                                min_value=1,
-                                value=int(item["qty"]),
-                                key=f"cart_qty_key_{c_idx}",
-                                label_visibility="collapsed",
-                            )
-                            if new_qty != item["qty"]:
-                                st.session_state.keranjang[c_idx]["qty"] = new_qty
-                                st.session_state.keranjang[c_idx]["subtotal"] = (
-                                    new_qty * item["harga"]
-                                )
-                                st.rerun()
-
-                        with col_sub:
-                            st.markdown(f"**Rp {item['subtotal']:,.0f}**")
-
-                        with col_del:
-                            if st.button("🗑️", key=f"cart_del_key_{c_idx}"):
-                                to_delete = c_idx
-
-                        # Isian Keterangan / Keperluan per barang yang ingin disubmit ke Admin
-                        current_ket = item.get("keterangan", "")
-                        new_ket = st.text_input(
-                            f"Keterangan / Keperluan ({item['nama_barang']}):",
-                            value=current_ket,
-                            placeholder="📝 Tuliskan keterangan untuk keperluan apa barang ini dipesan...",
-                            key=f"cart_ket_key_{c_idx}",
-                            label_visibility="collapsed",
-                        )
-                        if new_ket != current_ket:
-                            st.session_state.keranjang[c_idx]["keterangan"] = new_ket
-
-                    st.markdown(
-                        "<hr style='margin: 4px 0; border-color: #334155;'>",
-                        unsafe_allow_html=True,
+                with st.form("cart_edit_form"):
+                    edited_cart_df = st.data_editor(
+                        df_cart[[
+                            "Hapus",
+                            "nama_barang",
+                            "satuan",
+                            "harga",
+                            "qty",
+                            "subtotal",
+                            "keterangan",
+                        ]],
+                        column_config={
+                            "Hapus": st.column_config.CheckboxColumn(
+                                "🗑️ Hapus", default=False
+                            ),
+                            "nama_barang": st.column_config.TextColumn("Nama Barang", disabled=True),
+                            "satuan": st.column_config.TextColumn("Satuan", disabled=True),
+                            "harga": st.column_config.NumberColumn(
+                                "Harga (Rp)", format="Rp %'d", disabled=True
+                            ),
+                            "qty": st.column_config.NumberColumn(
+                                "Qty (Jumlah)", min_value=1, step=1, required=True
+                            ),
+                            "subtotal": st.column_config.NumberColumn(
+                                "Subtotal (Rp)", format="Rp %'d", disabled=True
+                            ),
+                            "keterangan": st.column_config.TextColumn(
+                                "📝 Keterangan / Keperluan"
+                            ),
+                        },
+                        hide_index=True,
+                        use_container_width=True,
+                        key="dept_cart_editor",
                     )
 
-                if to_delete is not None:
-                    st.session_state.keranjang.pop(to_delete)
+                    col_c_btn1, col_c_btn2 = st.columns(2)
+                    with col_c_btn1:
+                        save_cart_changes = st.form_submit_button("💾 Simpan Perubahan Keranjang")
+                    with col_c_btn2:
+                        submit_to_admin_btn = st.form_submit_button("🚀 Submit Pengajuan ke Admin", type="primary")
+
+                # Update data keranjang jika ada perubahan qty / keterangan / penghapusan
+                edited_cart_df["harga"] = pd.to_numeric(edited_cart_df["harga"], errors="coerce").fillna(0)
+                edited_cart_df["qty"] = pd.to_numeric(edited_cart_df["qty"], errors="coerce").fillna(1)
+                edited_cart_df["subtotal"] = edited_cart_df["harga"] * edited_cart_df["qty"]
+                edited_cart_df["departemen"] = dept_aktif
+                edited_cart_df["periode"] = pilihan_periode_dept
+                edited_cart_df["keterangan"] = edited_cart_df["keterangan"].fillna("")
+
+                if save_cart_changes:
+                    clean_cart = edited_cart_df[edited_cart_df["Hapus"] == False].drop(columns=["Hapus"])
+                    st.session_state.keranjang = clean_cart.to_dict("records")
+                    st.toast("✅ Perubahan keranjang berhasil disimpan!", icon="💾")
                     st.rerun()
 
-                st.markdown(
-                    f"""
-                    <div class="cart-summary-box">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 15px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN DIAJUKAN ({pilihan_periode_dept}):</span>
-                            <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_nominal:,.0f}</span>
-                        </div>
-                    </div>
-                """,
-                    unsafe_allow_html=True,
-                )
+                if submit_to_admin_btn:
+                    clean_cart = edited_cart_df[edited_cart_df["Hapus"] == False].drop(columns=["Hapus"])
+                    cart_records = clean_cart.to_dict("records")
 
-                col_sub1, col_sub2 = st.columns(2)
-                with col_sub1:
-                    if st.button("🚀 Submit Pengajuan ke Admin", type="primary"):
-                        for item in st.session_state.keranjang:
+                    if cart_records:
+                        for item in cart_records:
                             st.session_state.db_pengajuan_admin.append(item)
 
                             if webhook_url and "http" in webhook_url:
@@ -891,21 +884,35 @@ else:
                                 except Exception:
                                     pass
 
-                        # Simpan permanen ke file JSON
+                        # Simpan permanen ke database file JSON
                         save_persistent_data(st.session_state.db_pengajuan_admin)
 
                         st.session_state.keranjang = []
                         st.balloons()
                         st.success("🎉 Pengajuan berhasil dikirimkan ke Admin dan tersimpan!")
                         st.rerun()
+                    else:
+                        st.warning("⚠️ Keranjang kosong atau semua item tercentang hapus.")
 
-                with col_sub2:
-                    if st.button("🔴 Kosongkan Keranjang", key="clear_all_cart"):
-                        st.session_state.keranjang = []
-                        st.rerun()
+                total_cart_nominal = edited_cart_df[edited_cart_df["Hapus"] == False]["subtotal"].sum()
+                st.markdown(
+                    f"""
+                    <div class="cart-summary-box">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 15px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN DIAJUKAN ({pilihan_periode_dept}):</span>
+                            <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_cart_nominal:,.0f}</span>
+                        </div>
+                    </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+
+                if st.button("🔴 Kosongkan Seluruh Keranjang", key="clear_all_cart_btn"):
+                    st.session_state.keranjang = []
+                    st.rerun()
 
             else:
-                st.info("Keranjang saat ini kosong.")
+                st.info("Keranjang saat ini kosong. Silakan centang barang pada tabel katalog di atas untuk menambah barang.")
 
             # 4. RIWAYAT PENGAJUAN DEPARTEMEN
             st.markdown("---")
