@@ -185,7 +185,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. STAFF CATALOG (FULL FUNCTIONAL BRIDGE)
+# 3. STAFF CATALOG (NATIVE DYNAMIC & STICKY SEARCH)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -208,177 +208,114 @@ else:
 
     st.title(f"📦 Katalog Barang — {st.session_state.role}")
     
-    # --- LOGIKA PENANGKAP EVENT DARI JAVASCRIPT ---
-    if "action_add" in st.query_params:
-        try:
-            add_nama = st.query_params["action_add"]
-            add_satuan = st.query_params.get("satuan", "pcs")
-            add_harga = float(st.query_params.get("harga", 0))
-            add_qty = int(st.query_params.get("qty", 1))
-            
-            dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
-            periode_sec = datetime.now().strftime("%B%Y")
-
-            found = False
-            for item in st.session_state.keranjang:
-                if item["nama_barang"] == add_nama:
-                    item["qty"] += add_qty
-                    item["subtotal"] = item["qty"] * item["harga"]
-                    found = True
-                    break
-
-            if not found:
-                st.session_state.keranjang.append({
-                    "departemen": dept_code,
-                    "periode": periode_sec,
-                    "nama_barang": add_nama,
-                    "satuan": add_satuan,
-                    "harga": add_harga,
-                    "qty": add_qty,
-                    "subtotal": add_harga * add_qty
-                })
-
-            # Kirim Webhook
-            if webhook_url and "http" in webhook_url:
-                payload = {
-                    "departemen": dept_code,
-                    "periode": periode_sec,
-                    "nama_barang": add_nama,
-                    "satuan": add_satuan,
-                    "harga": add_harga,
-                    "qty": add_qty,
-                    "subtotal": add_harga * add_qty
-                }
-                try:
-                    requests.post(webhook_url, json=payload, timeout=3)
-                except:
-                    pass
-        except Exception as err:
-            pass
-
-        # Bersihkan parameter & update UI
-        st.query_params.clear()
-        st.rerun()
-
     if url_sheet and "http" in url_sheet:
         try:
             csv_url = get_csv_url(url_sheet, "DataBarang")
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            barang_list = []
-            for idx, row in df_barang.iterrows():
-                nama = str(row['Nama Barang'])
-                satuan = str(row['Satuan'])
-                harga = row['Harga']
-                harga_clean = float(re.sub(r'[^0-9]', '', str(harga))) if pd.notnull(harga) else 0
-                barang_list.append({
-                    "id": idx,
-                    "nama": nama,
-                    "satuan": satuan,
-                    "harga": harga_clean
-                })
+            # Clean data harga
+            df_barang['Harga_Clean'] = df_barang['Harga'].apply(
+                lambda x: float(re.sub(r'[^0-9]', '', str(x))) if pd.notnull(x) else 0.0
+            )
 
-            json_barang = json.dumps(barang_list)
+            # ------------------------------------------------------------------
+            # 1. KOLOM PENCARIAN STATIS / STICKY (Tidak ikut tergulir)
+            # ------------------------------------------------------------------
+            search_container = st.container()
+            with search_container:
+                search_query = st.text_input(
+                    "🔍 Cari Nama Barang:", 
+                    placeholder="Ketik nama barang... (Filter dinamis)",
+                    key="sticky_search_input"
+                )
 
-            # HTML & COMPONENT PENCARIAN DINAMIS JS
-            html_code = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-            <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-            <style>
-                * {{ font-family: 'Roboto', sans-serif !important; box-sizing: border-box; }}
-                body {{ background-color: #0f172a; color: #ffffff; margin: 0; padding: 0; }}
-                .search-box {{
-                    width: 100%; padding: 12px 16px; background-color: #1e293b;
-                    border: 1px solid #3b82f6; border-radius: 8px; color: #ffffff;
-                    font-size: 15px; outline: none; margin-bottom: 12px;
-                }}
-                .search-box::placeholder {{ color: #94a3b8; }}
-                .item-card {{
-                    background-color: #1e293b; border: 1px solid #334155;
-                    border-left: 4px solid #3b82f6; border-radius: 8px;
-                    padding: 10px 14px; margin-bottom: 8px;
-                }}
-                .item-title {{ font-size: 15px; font-weight: 700; color: #60a5fa; }}
-                .item-price {{ font-size: 14px; font-weight: 700; color: #34d399; margin-top: 2px; }}
-                .item-unit {{ color: #94a3b8; font-weight: normal; font-size: 12px; }}
-                .action-row {{
-                    display: flex; align-items: center; margin-top: 8px; padding-top: 8px;
-                    border-top: 1px dashed #475569;
-                }}
-                .qty-input {{
-                    width: 70px; padding: 6px; background-color: #0f172a;
-                    border: 1px solid #475569; color: #ffffff; border-radius: 6px;
-                    font-weight: bold; text-align: center; font-size: 14px;
-                }}
-                .add-btn {{
-                    background-color: #2563eb; color: #ffffff; border: none;
-                    padding: 8px 16px; border-radius: 6px; font-weight: 700;
-                    cursor: pointer; margin-left: 10px; font-size: 13px;
-                }}
-                .add-btn:hover {{ background-color: #1d4ed8; }}
-            </style>
-            </head>
-            <body>
+            # Filter data frame secara langsung (Dynamic Live Search)
+            if search_query:
+                filtered_df = df_barang[df_barang['Nama Barang'].astype(str).str.contains(search_query, case=False, na=False)].copy()
+            else:
+                filtered_df = df_barang.copy()
 
-            <input type="text" id="searchInput" oninput="filterBarang()" placeholder="🔍 Ketik nama barang... (filter instan)" class="search-box" autofocus />
-            <div id="barangContainer"></div>
+            # Tambahkan kolom kontrol untuk tabel interaktif
+            filtered_df['Pilih'] = False
+            filtered_df['Qty'] = 1
 
-            <script>
-                const dataBarang = {json_barang};
+            # ------------------------------------------------------------------
+            # 2. AREA DAFTAR BARANG YANG BISA DIGULIR (Scrollable Container)
+            # ------------------------------------------------------------------
+            st.write(f"Menampilkan **{len(filtered_df)}** barang.")
+            
+            # Kontainer dengan tinggi tetap agar bisa di-scroll tanpa menggeser kolom pencarian di atas
+            with st.container(height=380):
+                edited_df = st.data_editor(
+                    filtered_df[['Pilih', 'Nama Barang', 'Satuan', 'Harga_Clean', 'Qty']],
+                    column_config={
+                        "Pilih": st.column_config.CheckboxColumn("Tambah", default=False),
+                        "Nama Barang": st.column_config.TextColumn("Nama Barang", disabled=True),
+                        "Satuan": st.column_config.TextColumn("Satuan", disabled=True),
+                        "Harga_Clean": st.column_config.NumberColumn("Harga (Rp)", format="Rp %'d", disabled=True),
+                        "Qty": st.column_config.NumberColumn("Jumlah (Qty)", min_value=1, step=1, required=True)
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    key="catalog_editor"
+                )
 
-                function filterBarang() {{
-                    const query = document.getElementById('searchInput').value.toLowerCase().trim();
-                    const container = document.getElementById('barangContainer');
-                    container.innerHTML = '';
+            # ------------------------------------------------------------------
+            # 3. EKSEKUSI TAMBAH KE KERANJANG
+            # ------------------------------------------------------------------
+            dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
+            periode_sec = datetime.now().strftime("%B%Y")
 
-                    const filtered = dataBarang.filter(item => item.nama.toLowerCase().includes(query));
+            # Tombol proses barang yang dicentang
+            items_to_add = edited_df[edited_df['Pilih'] == True]
+            
+            if not items_to_add.empty:
+                if st.button(f"➕ Masukkan {len(items_to_add)} Barang Terpilih ke Keranjang", type="primary"):
+                    for _, row in items_to_add.iterrows():
+                        add_nama = row['Nama Barang']
+                        add_satuan = row['Satuan']
+                        add_harga = float(row['Harga_Clean'])
+                        add_qty = int(row['Qty'])
+                        add_subtotal = add_harga * add_qty
 
-                    if (filtered.length === 0) {{
-                        container.innerHTML = '<div style="color: #ef4444; padding: 10px; font-size: 14px;">Barang tidak ditemukan...</div>';
-                        return;
-                    }}
+                        found = False
+                        for item in st.session_state.keranjang:
+                            if item["nama_barang"] == add_nama:
+                                item["qty"] += add_qty
+                                item["subtotal"] = item["qty"] * item["harga"]
+                                found = True
+                                break
 
-                    filtered.slice(0, 15).forEach((item, index) => {{
-                        const formattedPrice = new Intl.NumberFormat('id-ID', {{ style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }}).format(item.harga);
-                        
-                        const itemCard = document.createElement('div');
-                        itemCard.className = 'item-card';
-                        itemCard.innerHTML = `
-                            <div class="item-title">📌 ${{item.nama}}</div>
-                            <div class="item-price">${{formattedPrice}} <span class="item-unit">/ ${{item.satuan}}</span></div>
-                            
-                            <div class="action-row">
-                                <input type="number" id="qty-${{index}}" value="1" min="1" class="qty-input" />
-                                <button type="button" class="add-btn" onclick="addToCart('${{encodeURIComponent(item.nama)}}', '${{item.satuan}}', ${{item.harga}}, ${{index}})">➕ Tambah</button>
-                            </div>
-                        `;
-                        container.appendChild(itemCard);
-                    }});
-                }}
+                        if not found:
+                            st.session_state.keranjang.append({
+                                "departemen": dept_code,
+                                "periode": periode_sec,
+                                "nama_barang": add_nama,
+                                "satuan": add_satuan,
+                                "harga": add_harga,
+                                "qty": add_qty,
+                                "subtotal": add_subtotal
+                            })
 
-                function addToCart(nama, satuan, harga, index) {{
-                    const qtyVal = document.getElementById(`qty-${{index}}`).value || 1;
-                    
-                    // Mengirimkan instruksi tambah via top window location safe-bypass
-                    const targetUrl = new URL(window.top.location.href);
-                    targetUrl.searchParams.set('action_add', decodeURIComponent(nama));
-                    targetUrl.searchParams.set('satuan', satuan);
-                    targetUrl.searchParams.set('harga', harga);
-                    targetUrl.searchParams.set('qty', qtyVal);
-                    
-                    window.top.location.href = targetUrl.href;
-                }}
+                        # Send to Webhook Google Sheet
+                        if webhook_url and "http" in webhook_url:
+                            payload = {
+                                "departemen": dept_code,
+                                "periode": periode_sec,
+                                "nama_barang": add_nama,
+                                "satuan": add_satuan,
+                                "harga": add_harga,
+                                "qty": add_qty,
+                                "subtotal": add_subtotal
+                            }
+                            try:
+                                requests.post(webhook_url, json=payload, timeout=3)
+                            except:
+                                pass
 
-                filterBarang();
-            </script>
-            </body>
-            </html>
-            """
-
-            components.html(html_code, height=420, scrolling=True)
+                    st.success("Barang berhasil ditambahkan ke keranjang!")
+                    st.rerun()
 
             # ==========================================
             # TABEL KERANJANG BELANJA
@@ -439,7 +376,7 @@ else:
                     st.rerun()
 
             else:
-                st.info("Keranjang masih kosong. Ketik nama barang pada kolom pencarian di atas untuk memilih.")
+                st.info("Keranjang masih kosong. Pilih barang pada tabel di atas untuk menambahkan.")
 
         except Exception as e:
             st.error(f"Gagal membaca database. Error: {e}")
