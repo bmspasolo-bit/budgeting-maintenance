@@ -3,8 +3,6 @@ import pandas as pd
 from datetime import datetime
 import re
 import requests
-import json
-import streamlit.components.v1 as components
 
 # ==============================================================================
 # CONFIG DATABASE PERMANEN
@@ -66,6 +64,15 @@ st.markdown("""
         margin-top: 15px;
         margin-bottom: 15px;
     }
+
+    .item-card {
+        background-color: #1e293b; 
+        border: 1px solid #334155;
+        border-left: 4px solid #3b82f6; 
+        border-radius: 8px;
+        padding: 12px 16px; 
+        margin-bottom: 12px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -93,6 +100,45 @@ def get_csv_url(url, sheet_name="DataBarang"):
         sheet_id = match.group(1)
         return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     return url
+
+# Fungsi Tambah Ke Keranjang (Callback)
+def tambah_ke_keranjang(nama, satuan, harga, qty, dept_code, periode_sec, webhook_url):
+    subtotal = harga * qty
+    found = False
+
+    for item in st.session_state.keranjang:
+        if item["nama_barang"] == nama:
+            item["qty"] += qty
+            item["subtotal"] = item["qty"] * item["harga"]
+            found = True
+            break
+
+    if not found:
+        st.session_state.keranjang.append({
+            "departemen": dept_code,
+            "periode": periode_sec,
+            "nama_barang": nama,
+            "satuan": satuan,
+            "harga": harga,
+            "qty": qty,
+            "subtotal": subtotal
+        })
+
+    # Kirim data ke Webhook Google Sheets
+    if webhook_url and "http" in webhook_url:
+        payload = {
+            "departemen": dept_code,
+            "periode": periode_sec,
+            "nama_barang": nama,
+            "satuan": satuan,
+            "harga": harga,
+            "qty": qty,
+            "subtotal": subtotal
+        }
+        try:
+            requests.post(webhook_url, json=payload, timeout=3)
+        except:
+            pass
 
 # ==========================================
 # 1. LOGIN
@@ -134,7 +180,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. STAFF CATALOG (COMMUNICATION BRIDGE FIX)
+# 3. STAFF CATALOG
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -163,178 +209,62 @@ else:
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            barang_list = []
-            for idx, row in df_barang.iterrows():
-                nama = str(row['Nama Barang'])
-                satuan = str(row['Satuan'])
-                harga = row['Harga']
-                harga_clean = float(re.sub(r'[^0-9]', '', str(harga))) if pd.notnull(harga) else 0
-                barang_list.append({
-                    "id": idx,
-                    "nama": nama,
-                    "satuan": satuan,
-                    "harga": harga_clean
-                })
+            # --- MENU PENCARIAN DINAMIS NATIVE ---
+            search_query = st.text_input(
+                "🔍 Cari Barang:", 
+                placeholder="Ketik nama barang... (pencarian langsung)",
+                key="search_input"
+            )
 
-            json_barang = json.dumps(barang_list)
+            # Filter data frame berdasarkan input pencarian secara dinamis
+            if search_query:
+                filtered_df = df_barang[df_barang['Nama Barang'].astype(str).str.contains(search_query, case=False, na=False)]
+            else:
+                filtered_df = df_barang.head(15) # Tampilkan 15 item pertama jika pencarian kosong
 
-            # HTML & COMPONENT POSTMESSAGE BRIDGE
-            html_code = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-            <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-            <style>
-                * {{ font-family: 'Roboto', sans-serif !important; box-sizing: border-box; }}
-                body {{ background-color: #0f172a; color: #ffffff; margin: 0; padding: 0; }}
-                .search-box {{
-                    width: 100%; padding: 12px 16px; background-color: #1e293b;
-                    border: 1px solid #3b82f6; border-radius: 8px; color: #ffffff;
-                    font-size: 15px; outline: none; margin-bottom: 12px;
-                }}
-                .search-box::placeholder {{ color: #94a3b8; }}
-                .item-card {{
-                    background-color: #1e293b; border: 1px solid #334155;
-                    border-left: 4px solid #3b82f6; border-radius: 8px;
-                    padding: 10px 14px; margin-bottom: 8px;
-                }}
-                .item-title {{ font-size: 15px; font-weight: 700; color: #60a5fa; }}
-                .item-price {{ font-size: 14px; font-weight: 700; color: #34d399; margin-top: 2px; }}
-                .item-unit {{ color: #94a3b8; font-weight: normal; font-size: 12px; }}
-                .action-row {{
-                    display: flex; align-items: center; margin-top: 8px; padding-top: 8px;
-                    border-top: 1px dashed #475569;
-                }}
-                .qty-input {{
-                    width: 70px; padding: 6px; background-color: #0f172a;
-                    border: 1px solid #475569; color: #ffffff; border-radius: 6px;
-                    font-weight: bold; text-align: center; font-size: 14px;
-                }}
-                .add-btn {{
-                    background-color: #2563eb; color: #ffffff; border: none;
-                    padding: 8px 16px; border-radius: 6px; font-weight: 700;
-                    cursor: pointer; margin-left: 10px; font-size: 13px;
-                }}
-                .add-btn:hover {{ background-color: #1d4ed8; }}
-            </style>
-            </head>
-            <body>
+            st.write(f"Menampilkan **{len(filtered_df)}** barang.")
 
-            <input type="text" id="searchInput" oninput="filterBarang()" placeholder="🔍 Ketik nama barang... (filter instan)" class="search-box" autofocus />
-            <div id="barangContainer"></div>
+            dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
+            periode_sec = datetime.now().strftime("%B%Y")
 
-            <script>
-                const dataBarang = {json_barang};
+            # LIST KATALOG BARANG
+            if filtered_df.empty:
+                st.warning("Barang tidak ditemukan.")
+            else:
+                for idx, row in filtered_df.iterrows():
+                    nama = str(row['Nama Barang'])
+                    satuan = str(row['Satuan'])
+                    harga_raw = row['Harga']
+                    harga_clean = float(re.sub(r'[^0-9]', '', str(harga_raw))) if pd.notnull(harga_raw) else 0.0
 
-                function sendToStreamlit(data) {{
-                    window.parent.postMessage({{
-                        isStreamlitMessage: true,
-                        type: "streamlit:setComponentValue",
-                        value: data
-                    }}, "*");
-                }}
-
-                function filterBarang() {{
-                    const query = document.getElementById('searchInput').value.toLowerCase().trim();
-                    const container = document.getElementById('barangContainer');
-                    container.innerHTML = '';
-
-                    const filtered = dataBarang.filter(item => item.nama.toLowerCase().includes(query));
-
-                    if (filtered.length === 0) {{
-                        container.innerHTML = '<div style="color: #ef4444; padding: 10px; font-size: 14px;">Barang tidak ditemukan...</div>';
-                        return;
-                    }}
-
-                    filtered.slice(0, 15).forEach((item, index) => {{
-                        const formattedPrice = new Intl.NumberFormat('id-ID', {{ style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }}).format(item.harga);
-                        
-                        const itemCard = document.createElement('div');
-                        itemCard.className = 'item-card';
-                        itemCard.innerHTML = `
-                            <div class="item-title">📌 ${{item.nama}}</div>
-                            <div class="item-price">${{formattedPrice}} <span class="item-unit">/ ${{item.satuan}}</span></div>
-                            
-                            <div class="action-row">
-                                <input type="number" id="qty-${{index}}" value="1" min="1" class="qty-input" />
-                                <button type="button" class="add-btn" id="btn-${{index}}">➕ Tambah</button>
+                    # Desain Kartu Produk Streamlit Native
+                    with st.container():
+                        st.markdown(f"""
+                            <div class="item-card">
+                                <div style="font-size: 15px; font-weight: 700; color: #60a5fa;">📌 {nama}</div>
+                                <div style="font-size: 14px; font-weight: 700; color: #34d399; margin-top: 2px;">
+                                    Rp {harga_clean:,.0f} <span style="color: #94a3b8; font-weight: normal; font-size: 12px;">/ {satuan}</span>
+                                </div>
                             </div>
-                        `;
-                        container.appendChild(itemCard);
+                        """, unsafe_allow_html=True)
 
-                        document.getElementById(`btn-${{index}}`).addEventListener('click', function() {{
-                            const qtyVal = parseInt(document.getElementById(`qty-${{index}}`).value || 1);
-                            sendToStreamlit({{
-                                nama: item.nama,
-                                satuan: item.satuan,
-                                harga: item.harga,
-                                qty: qtyVal,
-                                time: new Date().getTime()
-                            }});
-                        }});
-                    }});
-                }}
-
-                filterBarang();
-            </script>
-            </body>
-            </html>
-            """
-
-            selected_item = components.html(html_code, height=420, scrolling=True)
-
-            # PROSES ITEM DARI EVENT BRIDGE
-            if selected_item and isinstance(selected_item, dict):
-                last_processed = st.session_state.get("last_processed_time", 0)
-                item_time = selected_item.get("time", 0)
-
-                if item_time > last_processed:
-                    st.session_state.last_processed_time = item_time
-                    
-                    add_nama = selected_item["nama"]
-                    add_satuan = selected_item["satuan"]
-                    add_harga = float(selected_item["harga"])
-                    add_qty = int(selected_item["qty"])
-                    add_subtotal = add_harga * add_qty
-                    dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
-                    periode_sec = datetime.now().strftime("%B%Y")
-
-                    found = False
-                    for item in st.session_state.keranjang:
-                        if item["nama_barang"] == add_nama:
-                            item["qty"] += add_qty
-                            item["subtotal"] = item["qty"] * item["harga"]
-                            found = True
-                            break
-
-                    if not found:
-                        st.session_state.keranjang.append({
-                            "departemen": dept_code,
-                            "periode": periode_sec,
-                            "nama_barang": add_nama,
-                            "satuan": add_satuan,
-                            "harga": add_harga,
-                            "qty": add_qty,
-                            "subtotal": add_subtotal
-                        })
-
-                    # Kirim data ke Webhook Google Sheets
-                    if webhook_url and "http" in webhook_url:
-                        payload = {
-                            "departemen": dept_code,
-                            "periode": periode_sec,
-                            "nama_barang": add_nama,
-                            "satuan": add_satuan,
-                            "harga": add_harga,
-                            "qty": add_qty,
-                            "subtotal": add_subtotal
-                        }
-                        try:
-                            requests.post(webhook_url, json=payload, timeout=3)
-                        except:
-                            pass
-
-                    st.rerun()
+                        c1, c2 = st.columns([1, 4])
+                        with c1:
+                            qty_val = st.number_input(
+                                "Qty", 
+                                min_value=1, 
+                                value=1, 
+                                key=f"qty_item_{idx}", 
+                                label_visibility="collapsed"
+                            )
+                        with c2:
+                            st.button(
+                                "➕ Tambah", 
+                                key=f"btn_add_{idx}",
+                                on_click=tambah_ke_keranjang,
+                                args=(nama, satuan, harga_clean, qty_val, dept_code, periode_sec, webhook_url)
+                            )
+                        st.write("")
 
             # ==========================================
             # TABEL KERANJANG BELANJA
