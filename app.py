@@ -15,7 +15,7 @@ WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzf
 
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
-# STYLING GLOBAL & ROBOTO FONT
+# STYLING GLOBAL, FIX DARK MODE FONT, & CLEANUP UI
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
@@ -33,11 +33,38 @@ st.markdown("""
         color: #f8fafc !important;
     }
 
+    /* Fix Kontras Font Tabel Data Editor di Dark Mode */
+    div[data-testid="stDataFrame"] *, 
+    div[data-baseweb="table"] *, 
+    div[role="grid"] * {
+        color: #f8fafc !important;
+        background-color: transparent !important;
+    }
+
+    /* Sembunyikan Tulisan 'keyboard double arrow right' & Extra Spacing Pada Tabel */
+    [aria-label*="keyboard double arrow right"],
+    [data-testid="stDataEditor"] span:contains("keyboard double arrow right") {
+        display: none !important;
+    }
+
+    /* Styling Input Text & Password */
     div[data-baseweb="input"] > div, input {
         background-color: #1e293b !important;
         color: #ffffff !important;
         border: 1px solid #3b82f6 !important;
         border-radius: 8px !important;
+    }
+
+    /* Perbaikan Visibility Icon Password (Hanya Tampilkan Icon Mata) */
+    button[aria-label="Show password"], 
+    button[aria-label="Hide password"],
+    button[title="Show password text"],
+    button[title="Hide password text"] {
+        color: #60a5fa !important;
+    }
+    button[aria-label*="password"] span, 
+    button[aria-label*="Visibility"] {
+        font-size: 0px !important;
     }
 
     .stButton>button { 
@@ -87,7 +114,6 @@ if "role" not in st.session_state:
     st.session_state.role = ""
 if "keranjang" not in st.session_state:
     st.session_state.keranjang = []
-# Database Global Pengajuan yang Masuk ke Admin
 if "db_pengajuan_admin" not in st.session_state:
     st.session_state.db_pengajuan_admin = []
 
@@ -136,7 +162,6 @@ elif st.session_state.role == "Admin":
 
     st.title("🛡️ Admin Portal — Verifikasi & Cetak Proposal")
     
-    # Menampilkan pengajuan dari seluruh departemen
     if st.session_state.db_pengajuan_admin:
         df_admin = pd.DataFrame(st.session_state.db_pengajuan_admin)
         
@@ -157,15 +182,20 @@ elif st.session_state.role == "Admin":
         st.subheader("📝 Verifikasi & Edit Data Pengajuan Staff")
         st.caption("Admin dapat mengubah Qty/Harga, menghapus item, atau menambah item baru.")
 
-        # 2. TABEL INTERAKTIF UNTUK ADMIN
+        # Tampilkan Nama Departemen Terpilih di Atas Kiri Tabel
+        st.markdown(f"### 🏢 Departemen: **{pilihan_dept}**")
+
+        # 2. TABEL INTERAKTIF UNTUK ADMIN (KOLOM DEPARTEMEN DISEMBUNYIKAN)
         filtered_admin_df['Hapus'] = False
+        
+        # Sembunyikan kolom 'departemen' dari tabel agar tampilan lega
+        cols_to_show = ['Hapus', 'periode', 'nama_barang', 'satuan', 'harga', 'qty', 'subtotal']
         
         with st.form("admin_edit_form"):
             edited_admin_df = st.data_editor(
-                filtered_admin_df,
+                filtered_admin_df[cols_to_show],
                 column_config={
                     "Hapus": st.column_config.CheckboxColumn("🗑️ Hapus", default=False),
-                    "departemen": st.column_config.TextColumn("Departemen"),
                     "periode": st.column_config.TextColumn("Periode"),
                     "nama_barang": st.column_config.TextColumn("Nama Barang"),
                     "satuan": st.column_config.TextColumn("Satuan"),
@@ -186,7 +216,10 @@ elif st.session_state.role == "Admin":
             edited_admin_df['qty'] = pd.to_numeric(edited_admin_df['qty'], errors='coerce').fillna(1)
             edited_admin_df['subtotal'] = edited_admin_df['harga'] * edited_admin_df['qty']
             
+            # Kembalikan kolom 'departemen' ke data sebelum disave ke state
             updated_df = edited_admin_df[edited_admin_df['Hapus'] == False].drop(columns=['Hapus'])
+            updated_df['departemen'] = pilihan_dept
+            
             st.session_state.db_pengajuan_admin = updated_df.to_dict('records')
             st.toast("✅ Perubahan database berhasil disimpan!", icon="💾")
             st.rerun()
@@ -202,7 +235,7 @@ elif st.session_state.role == "Admin":
             </div>
         """, unsafe_allow_html=True)
 
-        # 3. CETAK DOKUMEN PROPOSAL (BROWSER NATIVE)
+        # 3. CETAK DOKUMEN PROPOSAL
         st.markdown("---")
         st.subheader("🖨️ Cetak Dokumen Proposal Anggaran")
         
@@ -213,7 +246,7 @@ elif st.session_state.role == "Admin":
                 rows_html += f"""
                 <tr>
                     <td style="text-align:center;">{idx}</td>
-                    <td>{r.departemen}</td>
+                    <td>{pilihan_dept}</td>
                     <td>{r.nama_barang}</td>
                     <td style="text-align:center;">{r.qty}</td>
                     <td style="text-align:center;">{r.satuan}</td>
@@ -438,11 +471,9 @@ else:
                 
                 with col_sub1:
                     if st.button("🚀 Submit Pengajuan ke Admin", type="primary"):
-                        # Masukkan ke Database Admin
                         for item in st.session_state.keranjang:
                             st.session_state.db_pengajuan_admin.append(item)
                             
-                            # Kirim ke Webhook jika URL tersedia
                             if webhook_url and "http" in webhook_url:
                                 try:
                                     requests.post(webhook_url, json=item, timeout=3)
