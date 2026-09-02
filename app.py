@@ -11,55 +11,80 @@ URL_SHEET_DEFAULT = "https://docs.google.com/spreadsheets/d/1dhbkNELRxIa9HAexkpT
 WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGBtdyZwB93hzfJdpAGYADO9r-q2yL4L7u2DBWein3N5wH5qI9R2QY5apPoLeKkh/exec"
 # ==============================================================================
 
-# 1. Konfigurasi Halaman & Styling Font Roboto & Ukuran Cetak
+# 1. Konfigurasi Halaman & Styling Font Roboto & Kontras Terang
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 
-    html, body, [class*="css"], .stMarkdown, p, div, span, label, input, button, select {
+    /* Paksa background aplikasi & kontras teks agar selalu jelas (Mobile Friendly) */
+    .stAppViewContainer, .stApp {
+        background-color: #f8fafc !important;
         font-family: 'Roboto', sans-serif !important;
-        color: #0f172a !important; /* Warna Font Lebih Hitam Tegas */
     }
 
-    .main { background-color: #f8fafc; padding: 10px; }
-    
+    /* Pengaturan Semua Teks & Label */
+    h1, h2, h3, h4, h5, h6, p, span, label, div, td, th {
+        font-family: 'Roboto', sans-serif !important;
+        color: #0f172a !important; /* Warna teks gelap tegas */
+    }
+
+    /* Styling Input Box & Selectbox agar kontras tinggi & terbaca */
+    div[data-baseweb="select"] > div, input {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 6px !important;
+    }
+
+    /* Styling Tombol Utama */
     .stButton>button { 
-        background-color: #1d4ed8; 
+        background-color: #1d4ed8 !important; 
         color: #ffffff !important; 
-        border-radius: 6px; 
-        font-weight: 500; 
-        font-size: 14px;
-        width: 100%; 
-        height: 40px; 
+        border-radius: 6px !important; 
+        font-weight: 600 !important; 
+        font-size: 14px !important;
+        width: 100% !important; 
+        height: 42px !important; 
+        border: none !important;
     }
     
-    div[data-testid="stSidebar"] { background-color: #f1f5f9; }
+    /* Sidebar Background & Teks */
+    section[data-testid="stSidebar"] { 
+        background-color: #f1f5f9 !important; 
+    }
+    section[data-testid="stSidebar"] * {
+        color: #0f172a !important;
+    }
     
-    h1 { font-size: 22px !important; font-weight: 700 !important; color: #0f172a !important; }
-    h2 { font-size: 18px !important; font-weight: 700 !important; color: #0f172a !important; }
-    h3 { font-size: 16px !important; font-weight: 600 !important; color: #0f172a !important; }
+    /* Ukuran Judul Ringkas & Proporsional */
+    h1 { font-size: 22px !important; font-weight: 700 !important; }
+    h2 { font-size: 18px !important; font-weight: 700 !important; }
+    h3 { font-size: 16px !important; font-weight: 600 !important; }
     
+    /* Kartu Barang (Item Card) */
     .item-card {
-        background-color: #ffffff;
-        padding: 14px;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        margin-top: 10px;
-        margin-bottom: 10px;
-        border-left: 4px solid #1d4ed8;
+        background-color: #ffffff !important;
+        padding: 14px !important;
+        border-radius: 8px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
+        margin-top: 10px !important;
+        margin-bottom: 10px !important;
+        border-left: 5px solid #1d4ed8 !important;
+        border: 1px solid #e2e8f0 !important;
     }
-    .item-title { font-size: 15px; font-weight: 700; color: #0f172a; }
-    .item-price { font-size: 14px; color: #047857; font-weight: 700; margin-top: 4px; }
-    .item-unit { font-size: 12px; color: #475569; }
+    .item-title { font-size: 15px !important; font-weight: 700 !important; color: #0f172a !important; }
+    .item-price { font-size: 14px !important; color: #047857 !important; font-weight: 700 !important; margin-top: 4px !important; }
+    .item-unit { font-size: 12px !important; color: #475569 !important; }
     
     /* Format Cetak Proposal Admin (Font Diperkecil & Proporsional) */
     .print-container {
-        background-color: #ffffff;
-        padding: 15px;
+        background-color: #ffffff !important;
+        padding: 15px !important;
         color: #000000 !important;
         font-family: 'Roboto', sans-serif !important;
+        border-radius: 8px !important;
     }
     .print-header {
         text-align: center;
@@ -119,7 +144,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Database Password Role Staff & Admin (Tambah Dept Baru)
+# Database Password Role Staff & Admin
 ROLE_DB = {
     "Teknisi": "tek2026",
     "Cleaning Service": "cs2026",
@@ -184,7 +209,6 @@ elif st.session_state.role == "Admin":
     
     if url_sheet and "http" in url_sheet:
         try:
-            # Daftar 7 Departemen
             list_dept = [
                 ("Teknisi", "Teknisi"),
                 ("CleaningService", "Cleaning Service"),
@@ -340,7 +364,6 @@ else:
                     submitted = st.form_submit_button("➕ Simpan ke Pengajuan")
                     
                     if submitted:
-                        # Format nama sheet target (hilangkan spasi)
                         dept_code = st.session_state.role.replace(" ", "")
                         
                         payload = {
