@@ -13,6 +13,7 @@ URL_SHEET_DEFAULT = "https://docs.google.com/spreadsheets/d/1dhbkNELRxIa9HAexkpT
 WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzfJdpAGYAD09r-q2yL4L7u2DBWein3N5wH5qI9R2QY5apPoLeKkh/exec"
 DATA_STORAGE_FILE = "pengajuan_data.json"
 PERIOD_STORAGE_FILE = "periode_data.json"
+CATALOG_STORAGE_FILE = "katalog_barang.json"
 
 
 def load_persistent_data():
@@ -52,6 +53,29 @@ def save_persistent_periods(periods):
             json.dump(periods, f, ensure_ascii=False, indent=2)
     except Exception as e:
         st.error(f"Gagal menyimpan periode lokal: {e}")
+
+
+def load_persistent_catalog():
+    """Load master katalog barang dari file lokal. Return list of dict atau None jika belum ada."""
+    if os.path.exists(CATALOG_STORAGE_FILE):
+        try:
+            with open(CATALOG_STORAGE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list) and data:
+                    return data
+        except Exception:
+            pass
+    return None
+
+
+def save_persistent_catalog(data):
+    try:
+        with open(CATALOG_STORAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Gagal menyimpan katalog lokal: {e}")
+
+
 # ==============================================================================
 
 st.set_page_config(
@@ -151,6 +175,7 @@ ROLE_DB = {
     "Proyek Pengadaan": "pengadaan2026",
     "Proyek Perbaikan": "perbaikan2026",
     "Boarding House": "boarding2026",
+    "Purchased": "purchased2026",
     "Admin": "admin2026",
 }
 
@@ -165,6 +190,8 @@ if "db_pengajuan_admin" not in st.session_state:
     st.session_state.db_pengajuan_admin = load_persistent_data()
 if "db_periode" not in st.session_state:
     st.session_state.db_periode = load_persistent_periods()
+if "admin_menu" not in st.session_state:
+    st.session_state.admin_menu = "Verifikasi Pengajuan"
 
 
 def get_csv_url(url, sheet_name="DataBarang"):
@@ -173,6 +200,28 @@ def get_csv_url(url, sheet_name="DataBarang"):
         sheet_id = match.group(1)
         return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     return url
+
+
+def load_catalog_df(url_sheet):
+    """Load katalog: prioritaskan file lokal jika ada, jika tidak ambil dari Google Sheet."""
+    local_data = load_persistent_catalog()
+    if local_data is not None:
+        df = pd.DataFrame(local_data)
+        # Pastikan kolom standar
+        for col in ["Nama Barang", "Satuan", "Harga"]:
+            if col not in df.columns:
+                df[col] = ""
+        return df, "lokal"
+
+    # Fallback ke Google Sheet
+    try:
+        csv_url = get_csv_url(url_sheet, "DataBarang")
+        df = pd.read_csv(csv_url)
+        df.columns = df.columns.str.strip()
+        return df, "sheet"
+    except Exception as e:
+        st.error(f"Gagal memuat katalog dari Google Sheet: {e}")
+        return pd.DataFrame(columns=["Nama Barang", "Satuan", "Harga"]), "error"
 
 
 # ==========================================
@@ -192,6 +241,7 @@ if not st.session_state.logged_in:
             # Pastikan reload data terbaru dari storage saat login
             st.session_state.db_pengajuan_admin = load_persistent_data()
             st.session_state.db_periode = load_persistent_periods()
+            st.session_state.admin_menu = "Verifikasi Pengajuan"
             st.rerun()
         else:
             st.error("❌ Kata sandi salah!")
@@ -201,6 +251,18 @@ if not st.session_state.logged_in:
 # ==========================================
 elif st.session_state.role == "Admin":
     periode_sekarang = datetime.now().strftime("%B %Y")
+    # Mapping English -> Indonesian untuk konsistensi
+    bulan_map = {
+        "January": "Januari", "February": "Februari", "March": "Maret",
+        "April": "April", "May": "Mei", "June": "Juni",
+        "July": "Juli", "August": "Agustus", "September": "September",
+        "October": "Oktober", "November": "November", "December": "Desember"
+    }
+    # Perbaiki periode sekarang ke format Indonesia jika perlu
+    eng_month = datetime.now().strftime("%B")
+    if eng_month in bulan_map:
+        periode_sekarang = f"{bulan_map[eng_month]} {datetime.now().year}"
+
     if periode_sekarang not in st.session_state.db_periode:
         st.session_state.db_periode.append(periode_sekarang)
         save_persistent_periods(st.session_state.db_periode)
@@ -214,6 +276,17 @@ elif st.session_state.role == "Admin":
             st.rerun()
 
         st.markdown("---")
+        # MENU UTAMA ADMIN
+        st.header("📋 Menu Admin")
+        menu_options = ["Verifikasi Pengajuan", "Kelola Katalog Barang"]
+        st.session_state.admin_menu = st.radio(
+            "Pilih Menu:",
+            options=menu_options,
+            index=menu_options.index(st.session_state.admin_menu) if st.session_state.admin_menu in menu_options else 0,
+            label_visibility="collapsed"
+        )
+
+        st.markdown("---")
         # FITUR TAMBAH PERIODE ANGGARAN
         st.header("➕ Tambah Periode Baru")
         with st.form("form_tambah_periode"):
@@ -224,7 +297,12 @@ elif st.session_state.role == "Admin":
             tahun_list = [2025, 2026, 2027, 2028, 2029, 2030]
             col_p1, col_p2 = st.columns(2)
             with col_p1:
-                p_bulan = st.selectbox("Bulan", bulan_list, index=bulan_list.index(datetime.now().strftime("%B")) if datetime.now().strftime("%B") in bulan_list else 9)
+                # Cari index bulan sekarang
+                try:
+                    idx_bulan = bulan_list.index(bulan_map.get(datetime.now().strftime("%B"), "September"))
+                except ValueError:
+                    idx_bulan = 8
+                p_bulan = st.selectbox("Bulan", bulan_list, index=idx_bulan)
             with col_p2:
                 p_tahun = st.selectbox("Tahun", tahun_list, index=1)
             
@@ -245,333 +323,713 @@ elif st.session_state.role == "Admin":
             "Link Google Sheet Utama:", value=URL_SHEET_DEFAULT
         )
 
-    st.title("🛡️ Admin Portal — Verifikasi & Cetak Proposal")
+    # ==================== MENU: VERIFIKASI PENGAJUAN ====================
+    if st.session_state.admin_menu == "Verifikasi Pengajuan":
+        st.title("🛡️ Admin Portal — Verifikasi & Cetak Proposal")
 
-    # Ambil gabungan daftar periode dari data & database periode
+        # Ambil gabungan daftar periode dari data & database periode
+        df_admin_raw = pd.DataFrame(st.session_state.db_pengajuan_admin) if st.session_state.db_pengajuan_admin else pd.DataFrame()
+        data_periods = list(df_admin_raw["periode"].unique()) if not df_admin_raw.empty and "periode" in df_admin_raw.columns else []
+        all_periods = list(dict.fromkeys(st.session_state.db_periode + data_periods))
+
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            pilihan_periode = st.selectbox(
+                "📅 Pilih Periode Anggaran:", options=all_periods
+            )
+
+        with col_f2:
+            if not df_admin_raw.empty and "departemen" in df_admin_raw.columns:
+                daftar_dept = ["Semua Departemen"] + list(df_admin_raw["departemen"].unique())
+            else:
+                daftar_dept = ["Semua Departemen"]
+            pilihan_dept = st.selectbox("🏢 Filter Departemen:", options=daftar_dept)
+
+        if st.session_state.db_pengajuan_admin:
+            df_admin = pd.DataFrame(st.session_state.db_pengajuan_admin)
+            if "keterangan" not in df_admin.columns:
+                df_admin["keterangan"] = ""
+
+            filtered_admin_df = df_admin[
+                df_admin["periode"] == pilihan_periode
+            ].copy()
+            if pilihan_dept != "Semua Departemen":
+                filtered_admin_df = filtered_admin_df[
+                    filtered_admin_df["departemen"] == pilihan_dept
+                ]
+
+            st.subheader("📝 Verifikasi & Edit Data Pengajuan Staff")
+            st.caption(
+                "Admin dapat mengubah Qty/Harga, Keterangan, menghapus item, atau menambah item baru."
+            )
+
+            if pilihan_dept == "Semua Departemen":
+                depts_to_show = list(filtered_admin_df["departemen"].unique()) if not filtered_admin_df.empty else []
+            else:
+                depts_to_show = [pilihan_dept] if not filtered_admin_df.empty else []
+
+            edited_dept_dfs = []
+
+            if depts_to_show:
+                with st.form("admin_edit_form"):
+                    for dept_name in depts_to_show:
+                        dept_df = filtered_admin_df[
+                            filtered_admin_df["departemen"] == dept_name
+                        ].copy()
+                        if dept_df.empty:
+                            continue
+
+                        dept_df["Hapus"] = False
+                        if "keterangan" not in dept_df.columns:
+                            dept_df["keterangan"] = ""
+
+                        # Kolom periode dihilangkan agar menghemat ruang, kolom keterangan ditambahkan
+                        cols_to_show = [
+                            "Hapus",
+                            "nama_barang",
+                            "satuan",
+                            "harga",
+                            "qty",
+                            "subtotal",
+                            "keterangan",
+                        ]
+
+                        st.markdown(f"### 🏢 Departemen: **{dept_name}**")
+
+                        edited_d_df = st.data_editor(
+                            dept_df[cols_to_show],
+                            column_config={
+                                "Hapus": st.column_config.CheckboxColumn(
+                                    "🗑️ Hapus", default=False
+                                ),
+                                "nama_barang": st.column_config.TextColumn("Nama Barang"),
+                                "satuan": st.column_config.TextColumn("Satuan"),
+                                "harga": st.column_config.NumberColumn(
+                                    "Harga (Rp)", format="Rp %'d"
+                                ),
+                                "qty": st.column_config.NumberColumn(
+                                    "Qty", min_value=1, step=1
+                                ),
+                                "subtotal": st.column_config.NumberColumn(
+                                    "Subtotal (Rp)", format="Rp %'d", disabled=True
+                                ),
+                                "keterangan": st.column_config.TextColumn("Keterangan / Keperluan"),
+                            },
+                            hide_index=True,
+                            use_container_width=True,
+                            num_rows="dynamic",
+                            key=f"admin_editor_{dept_name}",
+                        )
+
+                        edited_d_df["departemen"] = dept_name
+                        edited_d_df["periode"] = pilihan_periode
+                        edited_dept_dfs.append(edited_d_df)
+                        st.markdown("<br>", unsafe_allow_html=True)
+
+                    submit_admin = st.form_submit_button(
+                        "💾 Simpan Perubahan Admin", type="primary"
+                    )
+
+                if edited_dept_dfs:
+                    combined_admin_df = pd.concat(edited_dept_dfs, ignore_index=True)
+                else:
+                    combined_admin_df = pd.DataFrame(
+                        columns=[
+                            "departemen",
+                            "periode",
+                            "nama_barang",
+                            "satuan",
+                            "harga",
+                            "qty",
+                            "subtotal",
+                            "keterangan",
+                            "Hapus",
+                        ]
+                    )
+
+                combined_admin_df["harga"] = (
+                    pd.to_numeric(combined_admin_df["harga"], errors="coerce").fillna(0)
+                )
+                combined_admin_df["qty"] = (
+                    pd.to_numeric(combined_admin_df["qty"], errors="coerce").fillna(1)
+                )
+                combined_admin_df["subtotal"] = (
+                    combined_admin_df["harga"] * combined_admin_df["qty"]
+                )
+                if "keterangan" not in combined_admin_df.columns:
+                    combined_admin_df["keterangan"] = ""
+                combined_admin_df["keterangan"] = combined_admin_df["keterangan"].fillna("")
+
+                if submit_admin:
+                    clean_updated_df = combined_admin_df[
+                        combined_admin_df["Hapus"] == False
+                    ].drop(columns=["Hapus"])
+
+                    other_periods = [
+                        x
+                        for x in st.session_state.db_pengajuan_admin
+                        if x.get("periode") != pilihan_periode
+                    ]
+
+                    if pilihan_dept != "Semua Departemen":
+                        other_depts_current_period = [
+                            x
+                            for x in st.session_state.db_pengajuan_admin
+                            if x.get("periode") == pilihan_periode
+                            and x.get("departemen") != pilihan_dept
+                        ]
+                        st.session_state.db_pengajuan_admin = (
+                            other_periods
+                            + other_depts_current_period
+                            + clean_updated_df.to_dict("records")
+                        )
+                    else:
+                        st.session_state.db_pengajuan_admin = (
+                            other_periods + clean_updated_df.to_dict("records")
+                        )
+
+                    # Simpan permanen ke file JSON
+                    save_persistent_data(st.session_state.db_pengajuan_admin)
+
+                    st.toast("✅ Perubahan database berhasil disimpan!", icon="💾")
+                    st.rerun()
+
+                total_nominal_admin = combined_admin_df["subtotal"].sum()
+                st.markdown(
+                    f"""
+                    <div class="cart-summary-box">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 15px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN VERIFIKASI ADMIN ({pilihan_periode}):</span>
+                            <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_nominal_admin:,.0f}</span>
+                        </div>
+                    </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+
+                # CETAK DOKUMEN PROPOSAL
+                st.markdown("---")
+                st.subheader("🖨️ Cetak Dokumen Proposal Anggaran")
+
+                show_preview = st.toggle(
+                    "🖨️ Tampilkan Preview & Cetak Dokumen PDF", value=False
+                )
+
+                if show_preview:
+                    tables_html = ""
+                    rekap_rows_html = ""
+                    grand_total = 0
+
+                    for dept_name in depts_to_show:
+                        dept_data = combined_admin_df[
+                            combined_admin_df["departemen"] == dept_name
+                        ]
+                        if dept_data.empty:
+                            continue
+
+                        dept_subtotal = dept_data["subtotal"].sum()
+                        grand_total += dept_subtotal
+
+                        rekap_rows_html += f"""
+                        <tr>
+                            <td style='padding: 8px; border: 1px solid #000;'>Departemen {dept_name}</td>
+                            <td style='padding: 8px; border: 1px solid #000; text-align: right; font-weight: bold;'>Rp {dept_subtotal:,.0f}</td>
+                        </tr>
+                        """
+
+                        rows_html = ""
+                        for idx, r in enumerate(dept_data.itertuples(), start=1):
+                            sub = float(r.harga) * float(r.qty)
+                            ket_val = getattr(r, "keterangan", "") if pd.notnull(getattr(r, "keterangan", "")) else ""
+                            rows_html += f"""
+                            <tr>
+                                <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{idx}</td>
+                                <td style='border: 1px solid #000; padding: 6px;'>{r.nama_barang}</td>
+                                <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{r.qty}</td>
+                                <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{r.satuan}</td>
+                                <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {r.harga:,.0f}</td>
+                                <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {sub:,.0f}</td>
+                                <td style='border: 1px solid #000; padding: 6px;'>{ket_val}</td>
+                            </tr>
+                            """
+
+                        tables_html += f"""
+                        <h3 style='margin-top: 25px; margin-bottom: 8px; color: #000000; font-size: 16px;'>🏢 Departemen: {dept_name}</h3>
+                        <table style='width: 100%; border-collapse: collapse; margin-bottom: 15px;'>
+                            <thead>
+                                <tr style='background-color: #f2f2f2; color: #000;'>
+                                    <th style='width: 4%; border: 1px solid #000; padding: 6px;'>No</th>
+                                    <th style='border: 1px solid #000; padding: 6px; text-align: left;'>Nama Barang</th>
+                                    <th style='width: 8%; border: 1px solid #000; padding: 6px;'>Qty</th>
+                                    <th style='width: 8%; border: 1px solid #000; padding: 6px;'>Satuan</th>
+                                    <th style='width: 15%; border: 1px solid #000; padding: 6px; text-align: right;'>Harga Unit</th>
+                                    <th style='width: 15%; border: 1px solid #000; padding: 6px; text-align: right;'>Subtotal</th>
+                                    <th style='width: 25%; border: 1px solid #000; padding: 6px; text-align: left;'>Keterangan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows_html}
+                                <tr style='font-weight: bold; background-color: #e6e6e6; color: #000;'>
+                                    <td colspan='5' style='text-align:right; border: 1px solid #000; padding: 6px;'>SUBTOTAL {str(dept_name).upper()}:</td>
+                                    <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {dept_subtotal:,.0f}</td>
+                                    <td style='border: 1px solid #000; padding: 6px;'></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        """
+
+                    css_style = """
+                    <style>
+                        * { color: #000000 !important; font-family: Arial, sans-serif; }
+                        body { background-color: #ffffff !important; padding: 25px; margin: 0; }
+                        h2 { text-align: center; margin-bottom: 5px; color: #000000; }
+                        p.sub { text-align: center; font-size: 13px; color: #333333; margin-top: 0; margin-bottom: 20px; }
+                        .signature-container { margin-top: 25px; margin-bottom: 25px; width: 100%; clear: both; }
+                        .signature-table { width: 100%; border: none !important; margin-top: 15px; }
+                        .signature-table td { border: none !important; text-align: center; vertical-align: bottom; height: 85px; padding: 0; }
+                        .btn-print { background-color: #2563eb; color: #ffffff !important; padding: 10px 20px; font-size: 14px; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 15px; }
+                        .btn-print:hover { background-color: #1d4ed8; }
+                        @media print { .btn-print { display: none; } }
+                    </style>
+                    """
+
+                    # Teks sub judul (tulisan filter semua departemen dihilangkan)
+                    sub_title_text = f"Periode: <b>{pilihan_periode}</b>"
+                    if pilihan_dept != "Semua Departemen":
+                        sub_title_text += f" | Departemen: <b>{pilihan_dept}</b>"
+
+                    html_print = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>{css_style}</head>
+                    <body>
+                        <button class='btn-print' onclick='window.print()'>🖨️ Cetak / Simpan PDF Sekarang</button>
+                        <h2>PROPOSAL PENGAJUAN ANGGARAN BUDGETING</h2>
+                        <p class='sub'>{sub_title_text}</p>
+                        
+                        <!-- REKAPITULASI DI BAGIAN ATAS SETELAH JUDUL -->
+                        <div style='clear: both; margin-top: 10px; margin-bottom: 20px;'>
+                            <h4 style='margin-bottom: 8px; font-size: 14px; color: #000;'>📊 REKAPITULASI TOTAL ANGGARAN DEPARTEMEN</h4>
+                            <table style='width: 100%; border-collapse: collapse;'>
+                                <thead>
+                                    <tr style='background-color: #e2e8f0; color: #000;'>
+                                        <th style='border: 1px solid #000; padding: 8px; text-align: left;'>Departemen</th>
+                                        <th style='border: 1px solid #000; padding: 8px; text-align: right; width: 30%;'>Total Pengajuan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rekap_rows_html}
+                                    <tr style='background-color: #cbd5e1; font-weight: bold;'>
+                                        <td style='border: 1px solid #000; padding: 10px; text-align: right;'>GRAND TOTAL ANGGARAN:</td>
+                                        <td style='border: 1px solid #000; padding: 10px; text-align: right; font-size: 15px;'>Rp {grand_total:,.0f}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- TANDA TANGAN (2 SAJA) DI ATAS SETELAH REKAPITULASI -->
+                        <div class='signature-container'>
+                            <table class='signature-table'>
+                                <tr>
+                                    <td style='width: 50%;'>Dibuat oleh,<br><br><br><br><br><b>Ali Sukmawan BM</b><br><span>Building Manager</span></td>
+                                    <td style='width: 50%;'>Disetujui oleh,<br><br><br><br><br><b>Aristya Pambudi</b><br><span>General Mgr</span></td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <hr style='border: 0; border-top: 2px solid #334155; margin: 30px 0 20px 0;'>
+
+                        <!-- RINCIAN BARANG SETELAH REKAP DAN TANDA TANGAN -->
+                        {tables_html}
+                    </body>
+                    </html>
+                    """
+
+                    st.components.v1.html(html_print, height=750, scrolling=True)
+            else:
+                st.info(f"ℹ️ Belum ada data pengajuan anggaran pada periode **{pilihan_periode}**.")
+        else:
+            st.info(
+                "ℹ️ Belum ada data pengajuan anggaran dari departemen manapun yang di-Submit."
+            )
+
+    # ==================== MENU: KELOLA KATALOG BARANG ====================
+    else:
+        st.title("📦 Kelola Master Katalog Barang")
+        st.caption(
+            "Admin dapat menambah, mengedit, atau menghapus item di master katalog. "
+            "Perubahan disimpan secara lokal dan akan digunakan oleh semua departemen staff. "
+            "Anda juga bisa mengimpor ulang dari Google Sheet."
+        )
+
+        # Tombol sinkron dari Google Sheet
+        col_sync1, col_sync2 = st.columns([1, 3])
+        with col_sync1:
+            if st.button("🔄 Impor / Sinkron dari Google Sheet", use_container_width=True):
+                try:
+                    csv_url = get_csv_url(url_sheet, "DataBarang")
+                    df_sheet = pd.read_csv(csv_url)
+                    df_sheet.columns = df_sheet.columns.str.strip()
+                    # Normalisasi kolom
+                    rename_map = {}
+                    for c in df_sheet.columns:
+                        cl = c.lower()
+                        if "nama" in cl and "barang" in cl:
+                            rename_map[c] = "Nama Barang"
+                        elif "satuan" in cl:
+                            rename_map[c] = "Satuan"
+                        elif "harga" in cl:
+                            rename_map[c] = "Harga"
+                    if rename_map:
+                        df_sheet = df_sheet.rename(columns=rename_map)
+
+                    required = ["Nama Barang", "Satuan", "Harga"]
+                    for r in required:
+                        if r not in df_sheet.columns:
+                            st.error(f"Kolom '{r}' tidak ditemukan di Google Sheet.")
+                            st.stop()
+
+                    # Bersihkan harga
+                    def clean_harga(x):
+                        if pd.isnull(x):
+                            return 0
+                        s = re.sub(r"[^0-9]", "", str(x))
+                        return int(s) if s else 0
+
+                    records = []
+                    for _, row in df_sheet.iterrows():
+                        records.append({
+                            "Nama Barang": str(row["Nama Barang"]).strip(),
+                            "Satuan": str(row.get("Satuan", "")).strip(),
+                            "Harga": clean_harga(row.get("Harga", 0)),
+                        })
+
+                    save_persistent_catalog(records)
+                    st.toast(f"✅ Berhasil mengimpor {len(records)} item dari Google Sheet!", icon="📥")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Gagal sinkron dari Google Sheet: {e}")
+
+        with col_sync2:
+            local_exists = load_persistent_catalog() is not None
+            if local_exists:
+                st.success("✅ Katalog lokal aktif (perubahan Admin akan digunakan staff)")
+            else:
+                st.info("ℹ️ Belum ada katalog lokal. Gunakan tombol Impor atau tambah manual di bawah.")
+
+        st.markdown("---")
+
+        # Load katalog saat ini
+        df_katalog, sumber = load_catalog_df(url_sheet)
+
+        if df_katalog.empty and sumber != "lokal":
+            st.warning("Katalog masih kosong. Silakan impor dari Google Sheet atau tambahkan item baru di bawah.")
+            df_katalog = pd.DataFrame(columns=["Nama Barang", "Satuan", "Harga"])
+
+        # Pastikan kolom Harga numerik
+        if "Harga" in df_katalog.columns:
+            df_katalog["Harga"] = df_katalog["Harga"].apply(
+                lambda x: float(re.sub(r"[^0-9]", "", str(x))) if pd.notnull(x) and str(x).strip() else 0
+            )
+
+        st.subheader(f"📋 Daftar Barang Saat Ini ({len(df_katalog)} item)")
+        st.caption(f"Sumber data: **{'File Lokal' if sumber == 'lokal' else 'Google Sheet (read-only)'}**")
+
+        # Editor katalog
+        df_katalog = df_katalog.copy()
+        df_katalog["Hapus"] = False
+
+        with st.form("form_edit_katalog"):
+            edited_katalog = st.data_editor(
+                df_katalog[["Hapus", "Nama Barang", "Satuan", "Harga"]],
+                column_config={
+                    "Hapus": st.column_config.CheckboxColumn("🗑️ Hapus", default=False),
+                    "Nama Barang": st.column_config.TextColumn("📦 Nama Barang", required=True),
+                    "Satuan": st.column_config.TextColumn("🏷️ Satuan"),
+                    "Harga": st.column_config.NumberColumn(
+                        "💰 Harga (Rp)", format="Rp %'d", min_value=0, step=100
+                    ),
+                },
+                hide_index=True,
+                use_container_width=True,
+                num_rows="dynamic",
+                key="katalog_editor",
+            )
+
+            col_save, col_clear = st.columns(2)
+            with col_save:
+                save_katalog = st.form_submit_button("💾 Simpan Perubahan Katalog", type="primary", use_container_width=True)
+            with col_clear:
+                reset_katalog = st.form_submit_button("🗑️ Hapus Semua Katalog Lokal", use_container_width=True)
+
+        if save_katalog:
+            # Hapus yang dicentang + baris kosong
+            clean = edited_katalog[edited_katalog["Hapus"] == False].copy()
+            clean = clean[clean["Nama Barang"].astype(str).str.strip() != ""]
+            clean["Harga"] = pd.to_numeric(clean["Harga"], errors="coerce").fillna(0).astype(int)
+            clean["Satuan"] = clean["Satuan"].fillna("").astype(str)
+
+            records = clean[["Nama Barang", "Satuan", "Harga"]].to_dict("records")
+            save_persistent_catalog(records)
+            st.toast(f"✅ Katalog berhasil disimpan ({len(records)} item)!", icon="💾")
+            st.rerun()
+
+        if reset_katalog:
+            if os.path.exists(CATALOG_STORAGE_FILE):
+                os.remove(CATALOG_STORAGE_FILE)
+            st.toast("🗑️ Katalog lokal dihapus. Staff akan kembali menggunakan Google Sheet.", icon="🗑️")
+            st.rerun()
+
+        # Form cepat tambah barang baru
+        st.markdown("---")
+        st.subheader("➕ Tambah Barang Baru (Form Cepat)")
+        with st.form("form_tambah_barang_baru"):
+            col_a, col_b, col_c = st.columns([3, 1, 2])
+            with col_a:
+                new_nama = st.text_input("Nama Barang *", placeholder="Contoh: Kabel NYA 2.5mm")
+            with col_b:
+                new_satuan = st.text_input("Satuan", value="pcs", placeholder="pcs / unit / meter")
+            with col_c:
+                new_harga = st.number_input("Harga (Rp)", min_value=0, step=100, value=0)
+
+            submit_new = st.form_submit_button("➕ Tambahkan ke Katalog", type="primary", use_container_width=True)
+
+        if submit_new:
+            if not new_nama or not new_nama.strip():
+                st.error("Nama Barang wajib diisi!")
+            else:
+                current = load_persistent_catalog() or []
+                # Cek duplikat
+                existing_names = [x.get("Nama Barang", "").lower() for x in current]
+                if new_nama.strip().lower() in existing_names:
+                    st.warning(f"⚠️ Barang '{new_nama}' sudah ada di katalog.")
+                else:
+                    current.append({
+                        "Nama Barang": new_nama.strip(),
+                        "Satuan": new_satuan.strip() if new_satuan else "pcs",
+                        "Harga": int(new_harga),
+                    })
+                    save_persistent_catalog(current)
+                    st.toast(f"✅ '{new_nama}' berhasil ditambahkan!", icon="➕")
+                    st.rerun()
+
+# ==========================================
+# 2b. PANEL PURCHASED (khusus cetak PDF semua departemen)
+# ==========================================
+elif st.session_state.role == "Purchased":
+    with st.sidebar:
+        st.header("🛒 Panel Purchased")
+        st.write("Akses khusus untuk mencetak proposal lengkap semua departemen.")
+        if st.button("Keluar (Logout)"):
+            st.session_state.logged_in = False
+            st.session_state.role = ""
+            st.rerun()
+
+        st.markdown("---")
+        st.header("⚙️ Database")
+        url_sheet = st.text_input(
+            "Link Google Sheet Utama:", value=URL_SHEET_DEFAULT, disabled=True
+        )
+
+    st.title("🛒 Purchased Portal — Cetak Proposal Semua Departemen")
+    st.caption(
+        "Halaman ini hanya untuk menampilkan dan mencetak proposal anggaran lengkap "
+        "(semua departemen) yang akan dikirim ke bagian Purchased / Procurement."
+    )
+
+    # Load data
     df_admin_raw = pd.DataFrame(st.session_state.db_pengajuan_admin) if st.session_state.db_pengajuan_admin else pd.DataFrame()
     data_periods = list(df_admin_raw["periode"].unique()) if not df_admin_raw.empty and "periode" in df_admin_raw.columns else []
     all_periods = list(dict.fromkeys(st.session_state.db_periode + data_periods))
 
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
+    if not all_periods:
+        st.info("Belum ada periode atau data pengajuan.")
+    else:
         pilihan_periode = st.selectbox(
             "📅 Pilih Periode Anggaran:", options=all_periods
         )
 
-    with col_f2:
-        if not df_admin_raw.empty and "departemen" in df_admin_raw.columns:
-            daftar_dept = ["Semua Departemen"] + list(df_admin_raw["departemen"].unique())
-        else:
-            daftar_dept = ["Semua Departemen"]
-        pilihan_dept = st.selectbox("🏢 Filter Departemen:", options=daftar_dept)
+        if st.session_state.db_pengajuan_admin:
+            df_admin = pd.DataFrame(st.session_state.db_pengajuan_admin)
+            if "keterangan" not in df_admin.columns:
+                df_admin["keterangan"] = ""
 
-    if st.session_state.db_pengajuan_admin:
-        df_admin = pd.DataFrame(st.session_state.db_pengajuan_admin)
-        if "keterangan" not in df_admin.columns:
-            df_admin["keterangan"] = ""
+            filtered_df = df_admin[df_admin["periode"] == pilihan_periode].copy()
 
-        filtered_admin_df = df_admin[
-            df_admin["periode"] == pilihan_periode
-        ].copy()
-        if pilihan_dept != "Semua Departemen":
-            filtered_admin_df = filtered_admin_df[
-                filtered_admin_df["departemen"] == pilihan_dept
-            ]
-
-        st.subheader("📝 Verifikasi & Edit Data Pengajuan Staff")
-        st.caption(
-            "Admin dapat mengubah Qty/Harga, Keterangan, menghapus item, atau menambah item baru."
-        )
-
-        if pilihan_dept == "Semua Departemen":
-            depts_to_show = list(filtered_admin_df["departemen"].unique()) if not filtered_admin_df.empty else []
-        else:
-            depts_to_show = [pilihan_dept] if not filtered_admin_df.empty else []
-
-        edited_dept_dfs = []
-
-        if depts_to_show:
-            with st.form("admin_edit_form"):
-                for dept_name in depts_to_show:
-                    dept_df = filtered_admin_df[
-                        filtered_admin_df["departemen"] == dept_name
-                    ].copy()
-                    if dept_df.empty:
-                        continue
-
-                    dept_df["Hapus"] = False
-                    if "keterangan" not in dept_df.columns:
-                        dept_df["keterangan"] = ""
-
-                    # Kolom periode dihilangkan agar menghemat ruang, kolom keterangan ditambahkan
-                    cols_to_show = [
-                        "Hapus",
-                        "nama_barang",
-                        "satuan",
-                        "harga",
-                        "qty",
-                        "subtotal",
-                        "keterangan",
-                    ]
-
-                    st.markdown(f"### 🏢 Departemen: **{dept_name}**")
-
-                    edited_d_df = st.data_editor(
-                        dept_df[cols_to_show],
-                        column_config={
-                            "Hapus": st.column_config.CheckboxColumn(
-                                "🗑️ Hapus", default=False
-                            ),
-                            "nama_barang": st.column_config.TextColumn("Nama Barang"),
-                            "satuan": st.column_config.TextColumn("Satuan"),
-                            "harga": st.column_config.NumberColumn(
-                                "Harga (Rp)", format="Rp %'d"
-                            ),
-                            "qty": st.column_config.NumberColumn(
-                                "Qty", min_value=1, step=1
-                            ),
-                            "subtotal": st.column_config.NumberColumn(
-                                "Subtotal (Rp)", format="Rp %'d", disabled=True
-                            ),
-                            "keterangan": st.column_config.TextColumn("Keterangan / Keperluan"),
-                        },
-                        hide_index=True,
-                        use_container_width=True,
-                        num_rows="dynamic",
-                        key=f"admin_editor_{dept_name}",
-                    )
-
-                    edited_d_df["departemen"] = dept_name
-                    edited_d_df["periode"] = pilihan_periode
-                    edited_dept_dfs.append(edited_d_df)
-                    st.markdown("<br>", unsafe_allow_html=True)
-
-                submit_admin = st.form_submit_button(
-                    "💾 Simpan Perubahan Admin", type="primary"
-                )
-
-            if edited_dept_dfs:
-                combined_admin_df = pd.concat(edited_dept_dfs, ignore_index=True)
+            if filtered_df.empty:
+                st.info(f"ℹ️ Belum ada data pengajuan pada periode **{pilihan_periode}**.")
             else:
-                combined_admin_df = pd.DataFrame(
-                    columns=[
-                        "departemen",
-                        "periode",
-                        "nama_barang",
-                        "satuan",
-                        "harga",
-                        "qty",
-                        "subtotal",
-                        "keterangan",
-                        "Hapus",
-                    ]
+                depts_to_show = list(filtered_df["departemen"].unique())
+
+                # Hitung subtotal per dept
+                filtered_df["harga"] = pd.to_numeric(filtered_df["harga"], errors="coerce").fillna(0)
+                filtered_df["qty"] = pd.to_numeric(filtered_df["qty"], errors="coerce").fillna(1)
+                filtered_df["subtotal"] = filtered_df["harga"] * filtered_df["qty"]
+
+                # Ringkasan cepat
+                st.subheader("📊 Ringkasan Anggaran per Departemen")
+                rekap_data = []
+                grand_total = 0
+                for dept in depts_to_show:
+                    sub = filtered_df[filtered_df["departemen"] == dept]["subtotal"].sum()
+                    rekap_data.append({"Departemen": dept, "Total": sub})
+                    grand_total += sub
+
+                df_rekap = pd.DataFrame(rekap_data)
+                st.dataframe(
+                    df_rekap,
+                    column_config={
+                        "Departemen": "Departemen",
+                        "Total": st.column_config.NumberColumn("Total Pengajuan", format="Rp %'d"),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                )
+                st.markdown(
+                    f"""
+                    <div class="cart-summary-box">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 15px; font-weight: bold; color: #ffffff;">GRAND TOTAL SEMUA DEPARTEMEN ({pilihan_periode}):</span>
+                            <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {grand_total:,.0f}</span>
+                        </div>
+                    </div>
+                """,
+                    unsafe_allow_html=True,
                 )
 
-            combined_admin_df["harga"] = (
-                pd.to_numeric(combined_admin_df["harga"], errors="coerce").fillna(0)
-            )
-            combined_admin_df["qty"] = (
-                pd.to_numeric(combined_admin_df["qty"], errors="coerce").fillna(1)
-            )
-            combined_admin_df["subtotal"] = (
-                combined_admin_df["harga"] * combined_admin_df["qty"]
-            )
-            if "keterangan" not in combined_admin_df.columns:
-                combined_admin_df["keterangan"] = ""
-            combined_admin_df["keterangan"] = combined_admin_df["keterangan"].fillna("")
+                st.markdown("---")
+                st.subheader("🖨️ Preview & Cetak Dokumen PDF (Lengkap Semua Departemen)")
 
-            if submit_admin:
-                clean_updated_df = combined_admin_df[
-                    combined_admin_df["Hapus"] == False
-                ].drop(columns=["Hapus"])
+                show_preview = st.toggle(
+                    "🖨️ Tampilkan Preview & Cetak Dokumen PDF", value=True
+                )
 
-                other_periods = [
-                    x
-                    for x in st.session_state.db_pengajuan_admin
-                    if x.get("periode") != pilihan_periode
-                ]
+                if show_preview:
+                    tables_html = ""
+                    rekap_rows_html = ""
+                    grand_total_print = 0
 
-                if pilihan_dept != "Semua Departemen":
-                    other_depts_current_period = [
-                        x
-                        for x in st.session_state.db_pengajuan_admin
-                        if x.get("periode") == pilihan_periode
-                        and x.get("departemen") != pilihan_dept
-                    ]
-                    st.session_state.db_pengajuan_admin = (
-                        other_periods
-                        + other_depts_current_period
-                        + clean_updated_df.to_dict("records")
-                    )
-                else:
-                    st.session_state.db_pengajuan_admin = (
-                        other_periods + clean_updated_df.to_dict("records")
-                    )
+                    for dept_name in depts_to_show:
+                        dept_data = filtered_df[filtered_df["departemen"] == dept_name]
+                        if dept_data.empty:
+                            continue
 
-                # Simpan permanen ke file JSON
-                save_persistent_data(st.session_state.db_pengajuan_admin)
+                        dept_subtotal = dept_data["subtotal"].sum()
+                        grand_total_print += dept_subtotal
 
-                st.toast("✅ Perubahan database berhasil disimpan!", icon="💾")
-                st.rerun()
-
-            total_nominal_admin = combined_admin_df["subtotal"].sum()
-            st.markdown(
-                f"""
-                <div class="cart-summary-box">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 15px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN VERIFIKASI ADMIN ({pilihan_periode}):</span>
-                        <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_nominal_admin:,.0f}</span>
-                    </div>
-                </div>
-            """,
-                unsafe_allow_html=True,
-            )
-
-            # CETAK DOKUMEN PROPOSAL
-            st.markdown("---")
-            st.subheader("🖨️ Cetak Dokumen Proposal Anggaran")
-
-            show_preview = st.toggle(
-                "🖨️ Tampilkan Preview & Cetak Dokumen PDF", value=False
-            )
-
-            if show_preview:
-                tables_html = ""
-                rekap_rows_html = ""
-                grand_total = 0
-
-                for dept_name in depts_to_show:
-                    dept_data = combined_admin_df[
-                        combined_admin_df["departemen"] == dept_name
-                    ]
-                    if dept_data.empty:
-                        continue
-
-                    dept_subtotal = dept_data["subtotal"].sum()
-                    grand_total += dept_subtotal
-
-                    rekap_rows_html += f"""
-                    <tr>
-                        <td style='padding: 8px; border: 1px solid #000;'>Departemen {dept_name}</td>
-                        <td style='padding: 8px; border: 1px solid #000; text-align: right; font-weight: bold;'>Rp {dept_subtotal:,.0f}</td>
-                    </tr>
-                    """
-
-                    rows_html = ""
-                    for idx, r in enumerate(dept_data.itertuples(), start=1):
-                        sub = float(r.harga) * float(r.qty)
-                        ket_val = getattr(r, "keterangan", "") if pd.notnull(getattr(r, "keterangan", "")) else ""
-                        rows_html += f"""
+                        rekap_rows_html += f"""
                         <tr>
-                            <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{idx}</td>
-                            <td style='border: 1px solid #000; padding: 6px;'>{r.nama_barang}</td>
-                            <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{r.qty}</td>
-                            <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{r.satuan}</td>
-                            <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {r.harga:,.0f}</td>
-                            <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {sub:,.0f}</td>
-                            <td style='border: 1px solid #000; padding: 6px;'>{ket_val}</td>
+                            <td style='padding: 8px; border: 1px solid #000;'>Departemen {dept_name}</td>
+                            <td style='padding: 8px; border: 1px solid #000; text-align: right; font-weight: bold;'>Rp {dept_subtotal:,.0f}</td>
                         </tr>
                         """
 
-                    tables_html += f"""
-                    <h3 style='margin-top: 25px; margin-bottom: 8px; color: #000000; font-size: 16px;'>🏢 Departemen: {dept_name}</h3>
-                    <table style='width: 100%; border-collapse: collapse; margin-bottom: 15px;'>
-                        <thead>
-                            <tr style='background-color: #f2f2f2; color: #000;'>
-                                <th style='width: 4%; border: 1px solid #000; padding: 6px;'>No</th>
-                                <th style='border: 1px solid #000; padding: 6px; text-align: left;'>Nama Barang</th>
-                                <th style='width: 8%; border: 1px solid #000; padding: 6px;'>Qty</th>
-                                <th style='width: 8%; border: 1px solid #000; padding: 6px;'>Satuan</th>
-                                <th style='width: 15%; border: 1px solid #000; padding: 6px; text-align: right;'>Harga Unit</th>
-                                <th style='width: 15%; border: 1px solid #000; padding: 6px; text-align: right;'>Subtotal</th>
-                                <th style='width: 25%; border: 1px solid #000; padding: 6px; text-align: left;'>Keterangan</th>
+                        rows_html = ""
+                        for idx, r in enumerate(dept_data.itertuples(), start=1):
+                            sub = float(r.harga) * float(r.qty)
+                            ket_val = getattr(r, "keterangan", "") if pd.notnull(getattr(r, "keterangan", "")) else ""
+                            rows_html += f"""
+                            <tr>
+                                <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{idx}</td>
+                                <td style='border: 1px solid #000; padding: 6px;'>{r.nama_barang}</td>
+                                <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{r.qty}</td>
+                                <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{r.satuan}</td>
+                                <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {r.harga:,.0f}</td>
+                                <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {sub:,.0f}</td>
+                                <td style='border: 1px solid #000; padding: 6px;'>{ket_val}</td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            {rows_html}
-                            <tr style='font-weight: bold; background-color: #e6e6e6; color: #000;'>
-                                <td colspan='5' style='text-align:right; border: 1px solid #000; padding: 6px;'>SUBTOTAL {str(dept_name).upper()}:</td>
-                                <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {dept_subtotal:,.0f}</td>
-                                <td style='border: 1px solid #000; padding: 6px;'></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    """
+                            """
 
-                css_style = """
-                <style>
-                    * { color: #000000 !important; font-family: Arial, sans-serif; }
-                    body { background-color: #ffffff !important; padding: 25px; margin: 0; }
-                    h2 { text-align: center; margin-bottom: 5px; color: #000000; }
-                    p.sub { text-align: center; font-size: 13px; color: #333333; margin-top: 0; margin-bottom: 20px; }
-                    .signature-container { margin-top: 25px; margin-bottom: 25px; width: 100%; clear: both; }
-                    .signature-table { width: 100%; border: none !important; margin-top: 15px; }
-                    .signature-table td { border: none !important; text-align: center; vertical-align: bottom; height: 85px; padding: 0; }
-                    .btn-print { background-color: #2563eb; color: #ffffff !important; padding: 10px 20px; font-size: 14px; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 15px; }
-                    .btn-print:hover { background-color: #1d4ed8; }
-                    @media print { .btn-print { display: none; } }
-                </style>
-                """
-
-                # Teks sub judul (tulisan filter semua departemen dihilangkan)
-                sub_title_text = f"Periode: <b>{pilihan_periode}</b>"
-                if pilihan_dept != "Semua Departemen":
-                    sub_title_text += f" | Departemen: <b>{pilihan_dept}</b>"
-
-                html_print = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>{css_style}</head>
-                <body>
-                    <button class='btn-print' onclick='window.print()'>🖨️ Cetak / Simpan PDF Sekarang</button>
-                    <h2>PROPOSAL PENGAJUAN ANGGARAN BUDGETING</h2>
-                    <p class='sub'>{sub_title_text}</p>
-                    
-                    <!-- REKAPITULASI DI BAGIAN ATAS SETELAH JUDUL -->
-                    <div style='clear: both; margin-top: 10px; margin-bottom: 20px;'>
-                        <h4 style='margin-bottom: 8px; font-size: 14px; color: #000;'>📊 REKAPITULASI TOTAL ANGGARAN DEPARTEMEN</h4>
-                        <table style='width: 100%; border-collapse: collapse;'>
+                        tables_html += f"""
+                        <h3 style='margin-top: 25px; margin-bottom: 8px; color: #000000; font-size: 16px;'>🏢 Departemen: {dept_name}</h3>
+                        <table style='width: 100%; border-collapse: collapse; margin-bottom: 15px;'>
                             <thead>
-                                <tr style='background-color: #e2e8f0; color: #000;'>
-                                    <th style='border: 1px solid #000; padding: 8px; text-align: left;'>Departemen</th>
-                                    <th style='border: 1px solid #000; padding: 8px; text-align: right; width: 30%;'>Total Pengajuan</th>
+                                <tr style='background-color: #f2f2f2; color: #000;'>
+                                    <th style='width: 4%; border: 1px solid #000; padding: 6px;'>No</th>
+                                    <th style='border: 1px solid #000; padding: 6px; text-align: left;'>Nama Barang</th>
+                                    <th style='width: 8%; border: 1px solid #000; padding: 6px;'>Qty</th>
+                                    <th style='width: 8%; border: 1px solid #000; padding: 6px;'>Satuan</th>
+                                    <th style='width: 15%; border: 1px solid #000; padding: 6px; text-align: right;'>Harga Unit</th>
+                                    <th style='width: 15%; border: 1px solid #000; padding: 6px; text-align: right;'>Subtotal</th>
+                                    <th style='width: 25%; border: 1px solid #000; padding: 6px; text-align: left;'>Keterangan</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {rekap_rows_html}
-                                <tr style='background-color: #cbd5e1; font-weight: bold;'>
-                                    <td style='border: 1px solid #000; padding: 10px; text-align: right;'>GRAND TOTAL ANGGARAN:</td>
-                                    <td style='border: 1px solid #000; padding: 10px; text-align: right; font-size: 15px;'>Rp {grand_total:,.0f}</td>
+                                {rows_html}
+                                <tr style='font-weight: bold; background-color: #e6e6e6; color: #000;'>
+                                    <td colspan='5' style='text-align:right; border: 1px solid #000; padding: 6px;'>SUBTOTAL {str(dept_name).upper()}:</td>
+                                    <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {dept_subtotal:,.0f}</td>
+                                    <td style='border: 1px solid #000; padding: 6px;'></td>
                                 </tr>
                             </tbody>
                         </table>
-                    </div>
+                        """
 
-                    <!-- TANDA TANGAN (2 SAJA) DI ATAS SETELAH REKAPITULASI -->
-                    <div class='signature-container'>
-                        <table class='signature-table'>
-                            <tr>
-                                <td style='width: 50%;'>Dibuat oleh,<br><br><br><br><br><b>Ali Sukmawan BM</b><br><span>Building Manager</span></td>
-                                <td style='width: 50%;'>Disetujui oleh,<br><br><br><br><br><b>Aristya Pambudi</b><br><span>General Mgr</span></td>
-                            </tr>
-                        </table>
-                    </div>
+                    css_style = """
+                    <style>
+                        * { color: #000000 !important; font-family: Arial, sans-serif; }
+                        body { background-color: #ffffff !important; padding: 25px; margin: 0; }
+                        h2 { text-align: center; margin-bottom: 5px; color: #000000; }
+                        p.sub { text-align: center; font-size: 13px; color: #333333; margin-top: 0; margin-bottom: 20px; }
+                        .signature-container { margin-top: 25px; margin-bottom: 25px; width: 100%; clear: both; }
+                        .signature-table { width: 100%; border: none !important; margin-top: 15px; }
+                        .signature-table td { border: none !important; text-align: center; vertical-align: bottom; height: 85px; padding: 0; }
+                        .btn-print { background-color: #2563eb; color: #ffffff !important; padding: 10px 20px; font-size: 14px; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 15px; }
+                        .btn-print:hover { background-color: #1d4ed8; }
+                        @media print { .btn-print { display: none; } }
+                    </style>
+                    """
 
-                    <hr style='border: 0; border-top: 2px solid #334155; margin: 30px 0 20px 0;'>
+                    html_print = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>{css_style}</head>
+                    <body>
+                        <button class='btn-print' onclick='window.print()'>🖨️ Cetak / Simpan PDF Sekarang</button>
+                        <h2>PROPOSAL PENGAJUAN ANGGARAN BUDGETING</h2>
+                        <p class='sub'>Periode: <b>{pilihan_periode}</b> | Semua Departemen (untuk Purchased)</p>
+                        
+                        <!-- REKAPITULASI -->
+                        <div style='clear: both; margin-top: 10px; margin-bottom: 20px;'>
+                            <h4 style='margin-bottom: 8px; font-size: 14px; color: #000;'>📊 REKAPITULASI TOTAL ANGGARAN DEPARTEMEN</h4>
+                            <table style='width: 100%; border-collapse: collapse;'>
+                                <thead>
+                                    <tr style='background-color: #e2e8f0; color: #000;'>
+                                        <th style='border: 1px solid #000; padding: 8px; text-align: left;'>Departemen</th>
+                                        <th style='border: 1px solid #000; padding: 8px; text-align: right; width: 30%;'>Total Pengajuan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rekap_rows_html}
+                                    <tr style='background-color: #cbd5e1; font-weight: bold;'>
+                                        <td style='border: 1px solid #000; padding: 10px; text-align: right;'>GRAND TOTAL ANGGARAN:</td>
+                                        <td style='border: 1px solid #000; padding: 10px; text-align: right; font-size: 15px;'>Rp {grand_total_print:,.0f}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
 
-                    <!-- RINCIAN BARANG SETELAH REKAP DAN TANDA TANGAN -->
-                    {tables_html}
-                </body>
-                </html>
-                """
+                        <!-- TANDA TANGAN -->
+                        <div class='signature-container'>
+                            <table class='signature-table'>
+                                <tr>
+                                    <td style='width: 50%;'>Dibuat oleh,<br><br><br><br><br><b>Ali Sukmawan BM</b><br><span>Building Manager</span></td>
+                                    <td style='width: 50%;'>Disetujui oleh,<br><br><br><br><br><b>Aristya Pambudi</b><br><span>General Mgr</span></td>
+                                </tr>
+                            </table>
+                        </div>
 
-                st.components.v1.html(html_print, height=750, scrolling=True)
+                        <hr style='border: 0; border-top: 2px solid #334155; margin: 30px 0 20px 0;'>
+
+                        <!-- RINCIAN -->
+                        {tables_html}
+                    </body>
+                    </html>
+                    """
+
+                    st.components.v1.html(html_print, height=800, scrolling=True)
         else:
-            st.info(f"ℹ️ Belum ada data pengajuan anggaran pada periode **{pilihan_periode}**.")
-    else:
-        st.info(
-            "ℹ️ Belum ada data pengajuan anggaran dari departemen manapun yang di-Submit."
-        )
+            st.info("ℹ️ Belum ada data pengajuan anggaran yang tersedia.")
 
 # ==========================================
 # 3. KATALOG STAFF (TEKNISI, CS, GARDENER, DLL)
@@ -582,6 +1040,17 @@ else:
     # Sinkronisasi periode terkini
     all_periods = st.session_state.db_periode
     current_month_str = datetime.now().strftime("%B %Y")
+    # Mapping ke Indonesia
+    bulan_map = {
+        "January": "Januari", "February": "Februari", "March": "Maret",
+        "April": "April", "May": "Mei", "June": "Juni",
+        "July": "Juli", "August": "Agustus", "September": "September",
+        "October": "Oktober", "November": "November", "December": "Desember"
+    }
+    eng_month = datetime.now().strftime("%B")
+    if eng_month in bulan_map:
+        current_month_str = f"{bulan_map[eng_month]} {datetime.now().year}"
+
     default_period_idx = all_periods.index(current_month_str) if current_month_str in all_periods else len(all_periods) - 1
 
     with st.sidebar:
@@ -615,15 +1084,32 @@ else:
 
     if url_sheet and "http" in url_sheet:
         try:
-            csv_url = get_csv_url(url_sheet, "DataBarang")
-            df_barang = pd.read_csv(csv_url)
+            # Gunakan fungsi load yang prioritaskan katalog lokal
+            df_barang, sumber_katalog = load_catalog_df(url_sheet)
+
+            if df_barang.empty:
+                st.warning("Katalog barang kosong. Hubungi Admin untuk mengisi master katalog.")
+                st.stop()
+
             df_barang.columns = df_barang.columns.str.strip()
 
-            df_barang["Harga_Clean"] = df_barang["Harga"].apply(
-                lambda x: (
-                    float(re.sub(r"[^0-9]", "", str(x))) if pd.notnull(x) else 0.0
-                )
-            )
+            # Pastikan kolom Harga_Clean
+            if "Harga_Clean" not in df_barang.columns:
+                def clean_h(x):
+                    if pd.isnull(x):
+                        return 0.0
+                    s = re.sub(r"[^0-9]", "", str(x))
+                    return float(s) if s else 0.0
+                if "Harga" in df_barang.columns:
+                    df_barang["Harga_Clean"] = df_barang["Harga"].apply(clean_h)
+                else:
+                    df_barang["Harga_Clean"] = 0.0
+
+            # Info sumber
+            if sumber_katalog == "lokal":
+                st.caption("📌 Menggunakan **katalog lokal** yang dikelola Admin.")
+            else:
+                st.caption("📌 Menggunakan data dari **Google Sheet**.")
 
             # Inisialisasi state search jika belum ada
             if "search_query_val" not in st.session_state:
@@ -1063,5 +1549,3 @@ else:
             st.error(f"Gagal membaca database. Error: {e}")
     else:
         st.info("👈 Silakan atur link Google Sheet terlebih dahulu.")
-
-
