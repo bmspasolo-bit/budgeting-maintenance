@@ -5,69 +5,110 @@ import re
 import requests
 
 # ==============================================================================
-# CONFIG DATABASE PERMANEN (PASTE LINK OM DI SINI SUPAYA OTOMATIS KONEK)
+# CONFIG DATABASE PERMANEN
 # ==============================================================================
 URL_SHEET_DEFAULT = "https://docs.google.com/spreadsheets/d/1dhbkNELRxIa9HAexkpT13t2cbg3sqdRp5yBr7af9bcw/edit?usp=sharing"
 WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGBtdyZwB93hzfJdpAGYADO9r-q2yL4L7u2DBWein3N5wH5qI9R2QY5apPoLeKkh/exec"
 # ==============================================================================
 
-# 1. Konfigurasi Halaman & Styling
+# 1. Konfigurasi Halaman & Styling Font Roboto & Ukuran Cetak
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
 st.markdown("""
     <style>
-    .main { background-color: #f4f7fa; padding: 10px; }
-    .stButton>button { background-color: #2563eb; color: white; border-radius: 8px; font-weight: bold; width: 100%; height: 45px; }
-    div[data-testid="stSidebar"] { background-color: #e0f2fe; }
-    h1, h2, h3 { color: #1e3a8a; }
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
+    html, body, [class*="css"], .stMarkdown, p, div, span, label, input, button, select {
+        font-family: 'Roboto', sans-serif !important;
+        color: #0f172a !important; /* Warna Font Lebih Hitam Tegas */
+    }
+
+    .main { background-color: #f8fafc; padding: 10px; }
+    
+    .stButton>button { 
+        background-color: #1d4ed8; 
+        color: #ffffff !important; 
+        border-radius: 6px; 
+        font-weight: 500; 
+        font-size: 14px;
+        width: 100%; 
+        height: 40px; 
+    }
+    
+    div[data-testid="stSidebar"] { background-color: #f1f5f9; }
+    
+    h1 { font-size: 22px !important; font-weight: 700 !important; color: #0f172a !important; }
+    h2 { font-size: 18px !important; font-weight: 700 !important; color: #0f172a !important; }
+    h3 { font-size: 16px !important; font-weight: 600 !important; color: #0f172a !important; }
     
     .item-card {
-        background-color: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
-        margin-top: 15px;
-        margin-bottom: 15px;
-        border-left: 5px solid #2563eb;
-    }
-    .item-title { font-size: 18px; font-weight: bold; color: #1e293b; }
-    .item-price { font-size: 16px; color: #059669; font-weight: bold; margin-top: 5px; }
-    .item-unit { font-size: 13px; color: #64748b; }
-    
-    /* Format Khusus Dokumen Proposal Cetak Admin */
-    .print-container {
-        background-color: white;
-        padding: 25px;
-        border: 1px solid #ccc;
+        background-color: #ffffff;
+        padding: 14px;
         border-radius: 8px;
-        color: #000;
-        font-family: Arial, sans-serif;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-top: 10px;
+        margin-bottom: 10px;
+        border-left: 4px solid #1d4ed8;
+    }
+    .item-title { font-size: 15px; font-weight: 700; color: #0f172a; }
+    .item-price { font-size: 14px; color: #047857; font-weight: 700; margin-top: 4px; }
+    .item-unit { font-size: 12px; color: #475569; }
+    
+    /* Format Cetak Proposal Admin (Font Diperkecil & Proporsional) */
+    .print-container {
+        background-color: #ffffff;
+        padding: 15px;
+        color: #000000 !important;
+        font-family: 'Roboto', sans-serif !important;
     }
     .print-header {
         text-align: center;
-        border-bottom: 2px solid #000;
-        padding-bottom: 10px;
-        margin-bottom: 20px;
+        border-bottom: 2px solid #000000;
+        padding-bottom: 8px;
+        margin-bottom: 15px;
+    }
+    .print-header h2 {
+        font-size: 16px !important;
+        font-weight: 700 !important;
+        margin: 0 !important;
+        color: #000000 !important;
+    }
+    .print-header h3 {
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        margin-top: 4px !important;
+        color: #000000 !important;
+    }
+    .print-section-title {
+        font-size: 13px !important;
+        font-weight: 700 !important;
+        margin-top: 12px;
+        margin-bottom: 6px;
+        color: #000000 !important;
     }
     .summary-box {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 10px;
-        margin-bottom: 20px;
+        margin-top: 6px;
+        margin-bottom: 15px;
+        font-size: 12px;
     }
     .summary-box th, .summary-box td {
-        border: 1px solid #666;
-        padding: 10px;
+        border: 1px solid #333333;
+        padding: 6px 8px;
         text-align: left;
+        color: #000000 !important;
     }
-    .summary-box th { background-color: #f0f0f0; }
+    .summary-box th { background-color: #f1f5f9; font-weight: 700; }
+    
     .ttd-table {
         width: 100%;
-        margin-top: 30px;
-        margin-bottom: 30px;
+        margin-top: 20px;
+        margin-bottom: 20px;
         text-align: center;
+        font-size: 12px;
     }
-    .ttd-space { height: 70px; }
+    .ttd-space { height: 50px; }
     
     @media print {
         body * { visibility: hidden; }
@@ -78,11 +119,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Database Password Role Staff & Admin
+# Database Password Role Staff & Admin (Tambah Dept Baru)
 ROLE_DB = {
     "Teknisi": "tek2026",
     "Cleaning Service": "cs2026",
     "Gardener": "gar2026",
+    "Security": "sec2026",
+    "Proyek Pengadaan": "pengadaan2026",
+    "Proyek Perbaikan": "perbaikan2026",
+    "Boarding House": "boarding2026",
     "Admin": "admin2026"
 }
 
@@ -104,8 +149,7 @@ def get_csv_url(url, sheet_name="DataBarang"):
 # 2. LANDING PAGE & LOGIN
 # ==========================================
 if not st.session_state.logged_in:
-    st.title("🟦 Portal Budgeting Staff & Admin")
-    st.subheader("🔑 Login Akses Sistem")
+    st.title("🔑 Login Portal Budgeting")
     
     role_pilihan = st.selectbox("Pilih Akses / Departemen:", list(ROLE_DB.keys()))
     password_input = st.text_input("Kata Sandi (Password):", type="password")
@@ -133,34 +177,42 @@ elif st.session_state.role == "Admin":
             st.rerun()
             
         st.markdown("---")
-        st.header("⚙️ Pengaturan Database")
+        st.header("⚙️ Database")
         url_sheet = st.text_input("Link Google Sheet Utama:", value=URL_SHEET_DEFAULT)
 
     st.title("🖨️ Panel Cetak Proposal Anggaran Admin")
     
     if url_sheet and "http" in url_sheet:
         try:
-            list_dept = ["Teknisi", "CleaningService", "Gardener"]
-            dict_df = {}
+            # Daftar 7 Departemen
+            list_dept = [
+                ("Teknisi", "Teknisi"),
+                ("CleaningService", "Cleaning Service"),
+                ("Gardener", "Gardener"),
+                ("Security", "Security"),
+                ("ProyekPengadaan", "Proyek Pengadaan"),
+                ("ProyekPerbaikan", "Proyek Perbaikan"),
+                ("BoardingHouse", "Boarding House")
+            ]
             
-            for dept in list_dept:
-                sheet_target = f"{dept}_{datetime.now().strftime('%B%Y')}"
+            dict_df = {}
+            dict_budget = {}
+            total_keseluruhan = 0
+
+            for code_dept, name_dept in list_dept:
+                sheet_target = f"{code_dept}_{datetime.now().strftime('%B%Y')}"
                 try:
                     csv_url = get_csv_url(url_sheet, sheet_target)
                     df_temp = pd.read_csv(csv_url)
                     if not df_temp.empty:
-                        dict_df[dept] = df_temp
+                        dict_df[name_dept] = df_temp
+                        subtotal = df_temp['Subtotal'].sum() if 'Subtotal' in df_temp.columns else 0
+                        dict_budget[name_dept] = subtotal
+                        total_keseluruhan += subtotal
+                    else:
+                        dict_budget[name_dept] = 0
                 except:
-                    pass
-
-            df_tek = dict_df.get("Teknisi", pd.DataFrame(columns=['Nama Barang', 'Satuan', 'Harga Satuan', 'Jumlah (Qty)', 'Subtotal']))
-            df_cs = dict_df.get("CleaningService", pd.DataFrame(columns=['Nama Barang', 'Satuan', 'Harga Satuan', 'Jumlah (Qty)', 'Subtotal']))
-            df_gar = dict_df.get("Gardener", pd.DataFrame(columns=['Nama Barang', 'Satuan', 'Harga Satuan', 'Jumlah (Qty)', 'Subtotal']))
-
-            budget_tek = df_tek['Subtotal'].sum() if 'Subtotal' in df_tek.columns else 0
-            budget_cs = df_cs['Subtotal'].sum() if 'Subtotal' in df_cs.columns else 0
-            budget_gar = df_gar['Subtotal'].sum() if 'Subtotal' in df_gar.columns else 0
-            total_keseluruhan = budget_tek + budget_cs + budget_gar
+                    dict_budget[name_dept] = 0
 
             html_header = f"""
             <div class="print-container">
@@ -168,34 +220,26 @@ elif st.session_state.role == "Admin":
                     <h2>PROPOSAL PENGAJUAN ANGGARAN BUILDING MAINTENANCE</h2>
                     <h3>PERIODE: {periode_sekarang.upper()}</h3>
                 </div>
-                <h4>A. RINGKASAN ANGGARAN DEPARTEMEN</h4>
+                <div class="print-section-title">A. RINGKASAN ANGGARAN DEPARTEMEN</div>
                 <table class="summary-box">
                     <tr>
-                        <th>No</th>
-                        <th>Departemen</th>
-                        <th>Jumlah Anggaran (Rupiah)</th>
+                        <th width="8%">No</th>
+                        <th>Departemen / Divisi</th>
+                        <th width="35%">Jumlah Anggaran (Rupiah)</th>
                     </tr>
-                    <tr>
-                        <td>1</td>
-                        <td>Teknisi</td>
-                        <td>Rp {budget_tek:,.0f}</td>
-                    </tr>
-                    <tr>
-                        <td>2</td>
-                        <td>Cleaning Service</td>
-                        <td>Rp {budget_cs:,.0f}</td>
-                    </tr>
-                    <tr>
-                        <td>3</td>
-                        <td>Gardener</td>
-                        <td>Rp {budget_gar:,.0f}</td>
-                    </tr>
-                    <tr style="font-weight: bold; background-color: #f0f0f0;">
+                    <tr><td>1</td><td>Teknisi</td><td>Rp {dict_budget.get('Teknisi', 0):,.0f}</td></tr>
+                    <tr><td>2</td><td>Cleaning Service</td><td>Rp {dict_budget.get('Cleaning Service', 0):,.0f}</td></tr>
+                    <tr><td>3</td><td>Gardener</td><td>Rp {dict_budget.get('Gardener', 0):,.0f}</td></tr>
+                    <tr><td>4</td><td>Security</td><td>Rp {dict_budget.get('Security', 0):,.0f}</td></tr>
+                    <tr><td>5</td><td>Proyek Pengadaan</td><td>Rp {dict_budget.get('Proyek Pengadaan', 0):,.0f}</td></tr>
+                    <tr><td>6</td><td>Proyek Perbaikan</td><td>Rp {dict_budget.get('Proyek Perbaikan', 0):,.0f}</td></tr>
+                    <tr><td>7</td><td>Boarding House</td><td>Rp {dict_budget.get('Boarding House', 0):,.0f}</td></tr>
+                    <tr style="font-weight: bold; background-color: #f1f5f9;">
                         <td colspan="2" style="text-align: right;">TOTAL ESTIMASI ANGGARAN:</td>
                         <td>Rp {total_keseluruhan:,.0f}</td>
                     </tr>
                 </table>
-                <h4>B. LEMBAR PERSETUJUAN</h4>
+                <div class="print-section-title">B. LEMBAR PERSETUJUAN</div>
                 <table class="ttd-table">
                     <tr>
                         <td width="50%">Diajukan Oleh,<br><b>Building Mgr</b></td>
@@ -210,46 +254,30 @@ elif st.session_state.role == "Admin":
                         <td><b><u>Aristya Pambudi</u></b></td>
                     </tr>
                 </table>
-                <h4>C. RINCIAN BARANG PER DEPARTEMEN</h4>
+                <div class="print-section-title">C. RINCIAN BARANG PER DEPARTEMEN</div>
             </div>
             """
             st.markdown(html_header, unsafe_allow_html=True)
 
             cols_show = ['Nama Barang', 'Satuan', 'Harga Satuan', 'Jumlah (Qty)', 'Subtotal']
             
-            st.markdown("##### 🛠️ 1. Departemen Teknisi")
-            df_tek_display = df_tek[cols_show] if all(col in df_tek.columns for col in cols_show) else df_tek
-            st.dataframe(df_tek_display, use_container_width=True)
-            st.markdown(f"**Subtotal Teknisi:** `Rp {budget_tek:,.0f}`")
-            st.markdown("---")
+            for idx, (code_dept, name_dept) in enumerate(list_dept, 1):
+                st.markdown(f"**{idx}. Departemen {name_dept}**")
+                df_curr = dict_df.get(name_dept, pd.DataFrame(columns=cols_show))
+                df_display = df_curr[cols_show] if all(c in df_curr.columns for c in cols_show) else df_curr
+                st.dataframe(df_display, use_container_width=True)
+                st.markdown(f"**Subtotal {name_dept}:** `Rp {dict_budget.get(name_dept, 0):,.0f}`")
+                st.markdown("---")
 
-            st.markdown("##### 🧹 2. Departemen Cleaning Service")
-            df_cs_display = df_cs[cols_show] if all(col in df_cs.columns for col in cols_show) else df_cs
-            st.dataframe(df_cs_display, use_container_width=True)
-            st.markdown(f"**Subtotal Cleaning Service:** `Rp {budget_cs:,.0f}`")
-            st.markdown("---")
-
-            st.markdown("##### 🌿 3. Departemen Gardener")
-            df_gar_display = df_gar[cols_show] if all(col in df_gar.columns for col in cols_show) else df_gar
-            st.dataframe(df_gar_display, use_container_width=True)
-            st.markdown(f"**Subtotal Gardener:** `Rp {budget_gar:,.0f}`")
-
-            html_footer = f"""
-            <div class="print-container" style="border-top: none; margin-top: 20px;">
-                <h2 style="text-align: right; color: #1e3a8a;">TOTAL KESELURUHAN DEPARTEMEN: Rp {total_keseluruhan:,.0f}</h2>
-            </div>
-            """
-            st.markdown(html_footer, unsafe_allow_html=True)
-
-            st.info("💡 Tekan **CTRL + P** di keyboard untuk mencetak/menyimpan proposal dalam bentuk PDF.")
+            st.info("💡 Tekan **CTRL + P** untuk menyimpannya dalam format PDF.")
 
         except Exception as e:
-            st.error(f"Gagal memuat proposal admin. Pastikan link Google Sheet benar. Error: {e}")
+            st.error(f"Gagal memuat proposal. Error: {e}")
     else:
-        st.info("👈 Masukkan link Google Sheet di menu sebelah kiri terlebih dahulu.")
+        st.info("👈 Silakan isi link database Google Sheet default di dalam file app.py.")
 
 # ==========================================
-# 4. HALAMAN UTAMA STAFF (OTOMATIS KONEK)
+# 4. HALAMAN UTAMA STAFF
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -265,11 +293,11 @@ else:
             st.rerun()
             
         st.markdown("---")
-        st.header("⚙️ Pengaturan Database")
+        st.header("⚙️ Database")
         url_sheet = st.text_input("Link Google Sheet Utama:", value=URL_SHEET_DEFAULT)
         webhook_url = st.text_input("URL Web App Google Script:", value=WEBHOOK_URL_DEFAULT)
 
-    st.title(f"📦 Cari & Pilih Barang - {st.session_state.role}")
+    st.title(f"📦 Pilih Barang - {st.session_state.role}")
     
     if url_sheet and "http" in url_sheet:
         try:
@@ -277,7 +305,7 @@ else:
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            search_text = st.text_input("🔍 Ketik huruf/nama barang yang dicari:", placeholder="Contoh: ac, pel, lampu...")
+            search_text = st.text_input("🔍 Ketik nama barang:", placeholder="Contoh: ac, pel, semen...")
 
             if search_text.strip():
                 df_filtered = df_barang[df_barang['Nama Barang'].astype(str).str.contains(search_text, case=False, na=False)]
@@ -286,7 +314,7 @@ else:
 
             list_nama_barang = ["-- Pilih dari daftar barang --"] + list(df_filtered['Nama Barang'].dropna().unique())
 
-            pilihan_barang = st.selectbox("👇 Atau klik/ketik langsung pada dropdown berikut:", list_nama_barang)
+            pilihan_barang = st.selectbox("👇 Pilih barang dari dropdown:", list_nama_barang)
 
             if pilihan_barang != "-- Pilih dari daftar barang --":
                 row_barang = df_barang[df_barang['Nama Barang'] == pilihan_barang].iloc[0]
@@ -312,8 +340,11 @@ else:
                     submitted = st.form_submit_button("➕ Simpan ke Pengajuan")
                     
                     if submitted:
+                        # Format nama sheet target (hilangkan spasi)
+                        dept_code = st.session_state.role.replace(" ", "")
+                        
                         payload = {
-                            "departemen": st.session_state.role,
+                            "departemen": dept_code,
                             "periode": periode_sekarang,
                             "nama_barang": nama,
                             "satuan": satuan,
@@ -343,6 +374,6 @@ else:
                 st.dataframe(df_cart[['nama_barang', 'qty', 'satuan', 'subtotal']], use_container_width=True)
 
         except Exception as e:
-            st.error(f"Gagal membaca database. Pastikan link Google Sheet benar. Error: {e}")
+            st.error(f"Gagal membaca database. Error: {e}")
     else:
         st.info("👈 Silakan isi link database Google Sheet default di dalam file app.py.")
