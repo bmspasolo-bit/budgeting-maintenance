@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 import re
 import requests
-import json  # <-- TAMBAHKAN BARIS INI
+import json
 import streamlit.components.v1 as components
 
 # ==============================================================================
@@ -80,12 +80,16 @@ ROLE_DB = {
     "Admin": "admin2026"
 }
 
+# --- INIT STATE MANAGEMENT ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "role" not in st.session_state:
     st.session_state.role = ""
 if "keranjang" not in st.session_state:
     st.session_state.keranjang = []
+# Database Global Pengajuan yang Masuk ke Admin
+if "db_pengajuan_admin" not in st.session_state:
+    st.session_state.db_pengajuan_admin = []
 
 def get_csv_url(url, sheet_name="DataBarang"):
     match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
@@ -94,59 +98,8 @@ def get_csv_url(url, sheet_name="DataBarang"):
         return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     return url
 
-# Catch Data dari Query Parameters (Penyambung JavaScript -> Python)
-query_params = st.query_params
-if "add_nama" in query_params:
-    add_nama = query_params["add_nama"]
-    add_satuan = query_params.get("add_satuan", "")
-    add_harga = float(query_params.get("add_harga", 0))
-    add_qty = int(query_params.get("add_qty", 1))
-    
-    dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
-    periode_sec = datetime.now().strftime("%B%Y")
-
-    found = False
-    for item in st.session_state.keranjang:
-        if item["nama_barang"] == add_nama:
-            item["qty"] += add_qty
-            item["subtotal"] = item["qty"] * item["harga"]
-            found = True
-            break
-
-    if not found:
-        st.session_state.keranjang.append({
-            "departemen": dept_code,
-            "periode": periode_sec,
-            "nama_barang": add_nama,
-            "satuan": add_satuan,
-            "harga": add_harga,
-            "qty": add_qty,
-            "subtotal": add_harga * add_qty
-        })
-
-    # Kirim ke Webhook
-    webhook_url = st.session_state.get("webhook_url", WEBHOOK_URL_DEFAULT)
-    if webhook_url and "http" in webhook_url:
-        payload = {
-            "departemen": dept_code,
-            "periode": periode_sec,
-            "nama_barang": add_nama,
-            "satuan": add_satuan,
-            "harga": add_harga,
-            "qty": add_qty,
-            "subtotal": add_harga * add_qty
-        }
-        try:
-            requests.post(webhook_url, json=payload, timeout=3)
-        except:
-            pass
-            
-    # Bersihkan Query Parameter setelah ditambahkan
-    st.query_params.clear()
-    st.rerun()
-
 # ==========================================
-# 1. LOGIN
+# 1. HALAMAN LOGIN
 # ==========================================
 if not st.session_state.logged_in:
     st.title("🔑 Portal Login Budgeting")
@@ -164,7 +117,7 @@ if not st.session_state.logged_in:
             st.error("❌ Kata sandi salah!")
 
 # ==========================================
-# 2. ADMIN PANEL (MANAJEMEN & CETAK NATIVE)
+# 2. PANEL ADMIN (VERIFIKASI & EDIT & CETAK)
 # ==========================================
 elif st.session_state.role == "Admin":
     periode_sekarang = datetime.now().strftime("%B %Y")
@@ -183,14 +136,12 @@ elif st.session_state.role == "Admin":
 
     st.title("🛡️ Admin Portal — Verifikasi & Cetak Proposal")
     
-    if st.session_state.keranjang:
-        df_admin = pd.DataFrame(st.session_state.keranjang)
+    # Menampilkan pengajuan dari seluruh departemen
+    if st.session_state.db_pengajuan_admin:
+        df_admin = pd.DataFrame(st.session_state.db_pengajuan_admin)
         
-        # ------------------------------------------------------------------
         # 1. FILTER PERIODE & DEPARTEMEN
-        # ------------------------------------------------------------------
         col_f1, col_f2 = st.columns(2)
-        
         with col_f1:
             daftar_periode = list(df_admin['periode'].unique())
             pilihan_periode = st.selectbox("📅 Pilih Periode Anggaran:", options=daftar_periode)
@@ -203,12 +154,10 @@ elif st.session_state.role == "Admin":
         if pilihan_dept != "Semua Departemen":
             filtered_admin_df = filtered_admin_df[filtered_admin_df['departemen'] == pilihan_dept]
 
-        st.subheader("📝 Verifikasi & Edit Data Pengajuan")
-        st.caption("Admin dapat menambah, mengubah Qty/Harga, atau menghapus item langsung pada tabel.")
+        st.subheader("📝 Verifikasi & Edit Data Pengajuan Staff")
+        st.caption("Admin dapat mengubah Qty/Harga, menghapus item, atau menambah item baru.")
 
-        # ------------------------------------------------------------------
-        # 2. TABEL INTERAKTIF UNTUK ADMIN (EDIT/HAPUS/TAMBAH)
-        # ------------------------------------------------------------------
+        # 2. TABEL INTERAKTIF UNTUK ADMIN
         filtered_admin_df['Hapus'] = False
         
         with st.form("admin_edit_form"):
@@ -238,8 +187,8 @@ elif st.session_state.role == "Admin":
             edited_admin_df['subtotal'] = edited_admin_df['harga'] * edited_admin_df['qty']
             
             updated_df = edited_admin_df[edited_admin_df['Hapus'] == False].drop(columns=['Hapus'])
-            st.session_state.keranjang = updated_df.to_dict('records')
-            st.toast("✅ Perubahan berhasil disimpan!", icon="💾")
+            st.session_state.db_pengajuan_admin = updated_df.to_dict('records')
+            st.toast("✅ Perubahan database berhasil disimpan!", icon="💾")
             st.rerun()
 
         # Ringkasan Total
@@ -253,13 +202,11 @@ elif st.session_state.role == "Admin":
             </div>
         """, unsafe_allow_html=True)
 
-        # ------------------------------------------------------------------
-        # 3. CETAK BROWSER NATIVE (PRINT / SAVE AS PDF)
-        # ------------------------------------------------------------------
+        # 3. CETAK DOKUMEN PROPOSAL (BROWSER NATIVE)
         st.markdown("---")
         st.subheader("🖨️ Cetak Dokumen Proposal Anggaran")
         
-        if st.button("🖨️ Buka Tampilan Cetak PDF", type="primary"):
+        if st.button("🖨️ Buka Preview & Cetak PDF", type="primary"):
             rows_html = ""
             for idx, r in enumerate(edited_admin_df.itertuples(), start=1):
                 sub = float(r.harga) * float(r.qty)
@@ -321,9 +268,10 @@ elif st.session_state.role == "Admin":
             st.components.v1.html(html_print, height=600, scrolling=True)
 
     else:
-        st.info("ℹ️ Belum ada data pengajuan anggaran dari departemen manapun di keranjang.")
+        st.info("ℹ️ Belum ada data pengajuan anggaran dari departemen manapun yang di-Submit.")
+
 # ==========================================
-# 3. STAFF CATALOG (MODERN DESIGN & STICKY SEARCH)
+# 3. KATALOG STAFF (TEKNISI, CS, GARDENER, DLL)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -352,64 +300,37 @@ else:
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            # Clean data harga
             df_barang['Harga_Clean'] = df_barang['Harga'].apply(
                 lambda x: float(re.sub(r'[^0-9]', '', str(x))) if pd.notnull(x) else 0.0
             )
 
-            # ------------------------------------------------------------------
-            # 1. KOLOM PENCARIAN STATIS / STICKY 
-            # ------------------------------------------------------------------
+            # 1. PENCARIAN STATIS / STICKY
             search_query = st.text_input(
                 "🔍 Cari Nama Barang:", 
                 placeholder="⚡ Ketik nama barang... (Filter otomatis & instan)",
                 key="sticky_search_input"
             )
 
-            # Filter data frame secara langsung (Dynamic Live Search)
             if search_query:
                 filtered_df = df_barang[df_barang['Nama Barang'].astype(str).str.contains(search_query, case=False, na=False)].copy()
             else:
                 filtered_df = df_barang.copy()
 
-            # Tambahkan kolom kontrol untuk tabel interaktif
             filtered_df.insert(0, 'Pilih', False)
             filtered_df['Jumlah (Qty)'] = 1
 
-            # ------------------------------------------------------------------
-            # 2. TABEL BARANG MODERN (DATA EDITOR WITH CUSTOM CONFIG)
-            # ------------------------------------------------------------------
+            # 2. TABEL BARANG MODERN
             st.caption(f"📊 Menampilkan **{len(filtered_df)}** barang tersedia.")
             
-            # Form UI & Data Editor Modern
             with st.form("catalog_form"):
                 edited_df = st.data_editor(
                     filtered_df[['Pilih', 'Nama Barang', 'Satuan', 'Harga_Clean', 'Jumlah (Qty)']],
                     column_config={
-                        "Pilih": st.column_config.CheckboxColumn(
-                            "🛒 Pilih", 
-                            help="Centang untuk menambah ke keranjang",
-                            default=False
-                        ),
-                        "Nama Barang": st.column_config.TextColumn(
-                            "📦 Nama Barang", 
-                            disabled=True
-                        ),
-                        "Satuan": st.column_config.TextColumn(
-                            "🏷️ Satuan", 
-                            disabled=True
-                        ),
-                        "Harga_Clean": st.column_config.NumberColumn(
-                            "💰 Harga Unit", 
-                            format="Rp %'d", 
-                            disabled=True
-                        ),
-                        "Jumlah (Qty)": st.column_config.NumberColumn(
-                            "🔢 Qty", 
-                            min_value=1, 
-                            step=1, 
-                            required=True
-                        )
+                        "Pilih": st.column_config.CheckboxColumn("🛒 Pilih", default=False),
+                        "Nama Barang": st.column_config.TextColumn("📦 Nama Barang", disabled=True),
+                        "Satuan": st.column_config.TextColumn("🏷️ Satuan", disabled=True),
+                        "Harga_Clean": st.column_config.NumberColumn("💰 Harga Unit", format="Rp %'d", disabled=True),
+                        "Jumlah (Qty)": st.column_config.NumberColumn("🔢 Qty", min_value=1, step=1, required=True)
                     },
                     hide_index=True,
                     use_container_width=True,
@@ -417,17 +338,14 @@ else:
                     key="catalog_editor"
                 )
 
-                # Tombol Aksi Modern yang Menyatu dengan Tabel
                 submit_button = st.form_submit_button("➕ Masukkan Barang Terpilih ke Keranjang", type="primary", use_container_width=True)
 
-            # ------------------------------------------------------------------
-            # 3. LOGIKA EKSEKUSI TAMBAH KE KERANJANG
-            # ------------------------------------------------------------------
+            # 3. LOGIKA TAMBAH KE KERANJANG LOKAL
             if submit_button:
                 items_to_add = edited_df[edited_df['Pilih'] == True]
                 
                 if not items_to_add.empty:
-                    dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
+                    dept_code = st.session_state.role
                     periode_sec = datetime.now().strftime("%B%Y")
 
                     for _, row in items_to_add.iterrows():
@@ -456,29 +374,13 @@ else:
                                 "subtotal": add_subtotal
                             })
 
-                        # Webhook
-                        if webhook_url and "http" in webhook_url:
-                            payload = {
-                                "departemen": dept_code,
-                                "periode": periode_sec,
-                                "nama_barang": add_nama,
-                                "satuan": add_satuan,
-                                "harga": add_harga,
-                                "qty": add_qty,
-                                "subtotal": add_subtotal
-                            }
-                            try:
-                                requests.post(webhook_url, json=payload, timeout=3)
-                            except:
-                                pass
-
                     st.toast(f"✅ Berhasil menambah {len(items_to_add)} barang ke keranjang!", icon="🛒")
                     st.rerun()
                 else:
                     st.warning("⚠️ Silakan centang minimal satu barang pada kolom 'Pilih' terlebih dahulu.")
 
             # ==========================================
-            # TABEL KERANJANG BELANJA
+            # TABEL KERANJANG BELANJA & SUBMIT ADMIN
             # ==========================================
             st.markdown("---")
             st.subheader("🛒 Isi Keranjang Belanja")
@@ -531,9 +433,31 @@ else:
                     </div>
                 """, unsafe_allow_html=True)
 
-                if st.button("🔴 Kosongkan Semua Keranjang", key="clear_all_cart"):
-                    st.session_state.keranjang = []
-                    st.rerun()
+                # TOMBOL SUBMIT KE ADMIN DAN WEBHOOK
+                col_sub1, col_sub2 = st.columns(2)
+                
+                with col_sub1:
+                    if st.button("🚀 Submit Pengajuan ke Admin", type="primary"):
+                        # Masukkan ke Database Admin
+                        for item in st.session_state.keranjang:
+                            st.session_state.db_pengajuan_admin.append(item)
+                            
+                            # Kirim ke Webhook jika URL tersedia
+                            if webhook_url and "http" in webhook_url:
+                                try:
+                                    requests.post(webhook_url, json=item, timeout=3)
+                                except:
+                                    pass
+                                    
+                        st.session_state.keranjang = []
+                        st.balloons()
+                        st.success("🎉 Pengajuan berhasil dikirimkan ke Admin!")
+                        st.rerun()
+
+                with col_sub2:
+                    if st.button("🔴 Kosongkan Semua Keranjang", key="clear_all_cart"):
+                        st.session_state.keranjang = []
+                        st.rerun()
 
             else:
                 st.info("Keranjang masih kosong. Pilih barang pada tabel di atas untuk menambahkan.")
