@@ -164,15 +164,9 @@ if not st.session_state.logged_in:
             st.error("❌ Kata sandi salah!")
 
 # ==========================================
-# 2. ADMIN PANEL (MANAJEMEN & CETAK PDF PERIODE)
+# 2. ADMIN PANEL (MANAJEMEN & CETAK NATIVE)
 # ==========================================
 elif st.session_state.role == "Admin":
-    import io
-    from reportlab.lib.pagesizes import letter
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib import colors
-
     periode_sekarang = datetime.now().strftime("%B %Y")
     
     with st.sidebar:
@@ -189,7 +183,6 @@ elif st.session_state.role == "Admin":
 
     st.title("🛡️ Admin Portal — Verifikasi & Cetak Proposal")
     
-    # Cek apakah ada data di keranjang/database pengajuan
     if st.session_state.keranjang:
         df_admin = pd.DataFrame(st.session_state.keranjang)
         
@@ -206,13 +199,12 @@ elif st.session_state.role == "Admin":
             daftar_dept = ["Semua Departemen"] + list(df_admin['departemen'].unique())
             pilihan_dept = st.selectbox("🏢 Filter Departemen:", options=daftar_dept)
 
-        # Filter DataFrame berdasarkan input Admin
         filtered_admin_df = df_admin[df_admin['periode'] == pilihan_periode].copy()
         if pilihan_dept != "Semua Departemen":
             filtered_admin_df = filtered_admin_df[filtered_admin_df['departemen'] == pilihan_dept]
 
         st.subheader("📝 Verifikasi & Edit Data Pengajuan")
-        st.caption("Admin dapat menambah, mengubah Qty/Harga, atau menghapus item langsung pada tabel di bawah ini.")
+        st.caption("Admin dapat menambah, mengubah Qty/Harga, atau menghapus item langsung pada tabel.")
 
         # ------------------------------------------------------------------
         # 2. TABEL INTERAKTIF UNTUK ADMIN (EDIT/HAPUS/TAMBAH)
@@ -234,121 +226,102 @@ elif st.session_state.role == "Admin":
                 },
                 hide_index=True,
                 use_container_width=True,
-                num_rows="dynamic", # Memungkinkan Admin MENAMBAH BARIS BARU
+                num_rows="dynamic",
                 key="admin_editor"
             )
 
             submit_admin = st.form_submit_button("💾 Simpan Perubahan Admin", type="primary")
 
         if submit_admin:
-            # Hitung ulang subtotal dan proses item yang diuji
             edited_admin_df['harga'] = pd.to_numeric(edited_admin_df['harga'], errors='coerce').fillna(0)
             edited_admin_df['qty'] = pd.to_numeric(edited_admin_df['qty'], errors='coerce').fillna(1)
             edited_admin_df['subtotal'] = edited_admin_df['harga'] * edited_admin_df['qty']
             
-            # Buang baris yang ditandai Hapus
             updated_df = edited_admin_df[edited_admin_df['Hapus'] == False].drop(columns=['Hapus'])
-            
-            # Update kembali ke st.session_state.keranjang
             st.session_state.keranjang = updated_df.to_dict('records')
             st.toast("✅ Perubahan berhasil disimpan!", icon="💾")
             st.rerun()
 
         # Ringkasan Total
-        total_pengajuan = edited_admin_df['subtotal'].sum()
+        total_nominal_admin = edited_admin_df['subtotal'].sum()
         st.markdown(f"""
             <div class="cart-summary-box">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-size: 15px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN VERIFIKASI ADMIN ({pilihan_periode}):</span>
-                    <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_nominal:,.0f}</span>
+                    <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_nominal_admin:,.0f}</span>
                 </div>
             </div>
         """, unsafe_allow_html=True)
 
         # ------------------------------------------------------------------
-        # 3. GENERATE & CETAK PROPOSAL PDF PER PERIODE
+        # 3. CETAK BROWSER NATIVE (PRINT / SAVE AS PDF)
         # ------------------------------------------------------------------
         st.markdown("---")
         st.subheader("🖨️ Cetak Dokumen Proposal Anggaran")
         
-        def generate_pdf(dataframe, periode, dept):
-            buffer = io.BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
-            story = []
-            
-            styles = getSampleStyleSheet()
-            title_style = ParagraphStyle(
-                'TitleStyle',
-                parent=styles['Heading1'],
-                fontSize=16,
-                alignment=1,
-                spaceAfter=12
-            )
-            subtitle_style = ParagraphStyle(
-                'SubTitleStyle',
-                parent=styles['Normal'],
-                fontSize=10,
-                alignment=1,
-                spaceAfter=20
-            )
-
-            # Header Dokumen
-            story.append(Paragraph("<b>PROPOSAL PENGAJUAN ANGGARAN BUDGETING</b>", title_style))
-            story.append(Paragraph(f"Periode: <b>{periode}</b> | Departemen: <b>{dept}</b>", subtitle_style))
-            story.append(Spacer(1, 10))
-
-            # Tabel Data PDF
-            table_data = [["No", "Departemen", "Nama Barang", "Qty", "Satuan", "Harga Unit (Rp)", "Subtotal (Rp)"]]
-            
-            total_pdf = 0
-            for idx, r in enumerate(dataframe.itertuples(), start=1):
+        if st.button("🖨️ Buka Tampilan Cetak PDF", type="primary"):
+            rows_html = ""
+            for idx, r in enumerate(edited_admin_df.itertuples(), start=1):
                 sub = float(r.harga) * float(r.qty)
-                total_pdf += sub
-                table_data.append([
-                    str(idx),
-                    str(r.departemen),
-                    str(r.nama_barang),
-                    str(r.qty),
-                    str(r.satuan),
-                    f"{r.harga:,.0f}",
-                    f"{sub:,.0f}"
-                ])
-                
-            table_data.append(["", "", "", "", "", "TOTAL:", f"Rp {total_pdf:,.0f}"])
+                rows_html += f"""
+                <tr>
+                    <td style="text-align:center;">{idx}</td>
+                    <td>{r.departemen}</td>
+                    <td>{r.nama_barang}</td>
+                    <td style="text-align:center;">{r.qty}</td>
+                    <td style="text-align:center;">{r.satuan}</td>
+                    <td style="text-align:right;">Rp {r.harga:,.0f}</td>
+                    <td style="text-align:right;">Rp {sub:,.0f}</td>
+                </tr>
+                """
 
-            t = Table(table_data, colWidths=[25, 80, 180, 40, 45, 90, 90])
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('ALIGN', (2,1), (2,-1), 'LEFT'),
-                ('ALIGN', (5,1), (-1,-1), 'RIGHT'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0,0), (-1,0), 9),
-                ('BOTTOMPADDING', (0,0), (-1,0), 8),
-                ('GRID', (0,0), (-1,-2), 0.5, colors.grey),
-                ('LINEABOVE', (0,-1), (-1,-1), 1, colors.black),
-                ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
-            ]))
-            story.append(t)
-            
-            doc.build(story)
-            buffer.seek(0)
-            return buffer
-
-        pdf_bytes = generate_pdf(filtered_admin_df, pilihan_periode, pilihan_dept)
-        
-        st.download_button(
-            label=f"📄 Download Proposal PDF (Periode {pilihan_periode})",
-            data=pdf_bytes,
-            file_name=f"Proposal_Anggaran_{pilihan_periode}_{pilihan_dept}.pdf",
-            mime="application/pdf",
-            type="primary"
-        )
+            html_print = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; color: #000; padding: 20px; }}
+                h2 {{ text-align: center; margin-bottom: 5px; }}
+                p.sub {{ text-align: center; font-size: 13px; color: #444; margin-top: 0; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                th, td {{ border: 1px solid #333; padding: 8px; font-size: 12px; }}
+                th {{ background-color: #f2f2f2; }}
+                .total-row {{ font-weight: bold; background-color: #e6e6e6; }}
+            </style>
+            </head>
+            <body>
+                <h2>PROPOSAL PENGAJUAN ANGGARAN BUDGETING</h2>
+                <p class="sub">Periode: <b>{pilihan_periode}</b> | Departemen: <b>{pilihan_dept}</b></p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>Departemen</th>
+                            <th>Nama Barang</th>
+                            <th>Qty</th>
+                            <th>Satuan</th>
+                            <th>Harga Unit</th>
+                            <th>Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                        <tr class="total-row">
+                            <td colspan="6" style="text-align:right;">TOTAL ANGGARAN:</td>
+                            <td style="text-align:right;">Rp {total_nominal_admin:,.0f}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <script>
+                    window.onload = function() {{ window.print(); }}
+                </script>
+            </body>
+            </html>
+            """
+            st.components.v1.html(html_print, height=600, scrolling=True)
 
     else:
         st.info("ℹ️ Belum ada data pengajuan anggaran dari departemen manapun di keranjang.")
-
 # ==========================================
 # 3. STAFF CATALOG (MODERN DESIGN & STICKY SEARCH)
 # ==========================================
