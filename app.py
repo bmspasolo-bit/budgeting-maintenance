@@ -1112,25 +1112,22 @@ else:
                 st.caption("📌 Menggunakan data dari **Google Sheet**.")
 
             # Inisialisasi state search jika belum ada
-            if "search_query_val" not in st.session_state:
-                st.session_state.search_query_val = ""
+            if "sticky_search_input" not in st.session_state:
+                st.session_state.sticky_search_input = ""
 
             # 1. PENCARIAN BARANG DINAMIS (ALA WA WEB)
             col_search, col_reset = st.columns([5, 1])
             with col_search:
-                # Kolom pencarian responsif
+                # Kolom pencarian responsif (nilai dikontrol lewat key di session_state)
                 search_query = st.text_input(
                     "🔍 Cari Barang atau Kode:",
-                    value=st.session_state.search_query_val,
                     placeholder="🔍 Ketik nama barang (langsung terfilter seperti WA Web)...",
                     key="sticky_search_input",
                     label_visibility="collapsed",
                 )
-                st.session_state.search_query_val = search_query
 
             with col_reset:
                 if st.button("❌ Reset", use_container_width=True):
-                    st.session_state.search_query_val = ""
                     st.session_state.sticky_search_input = ""
                     st.rerun()
 
