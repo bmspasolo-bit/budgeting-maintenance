@@ -1115,6 +1115,9 @@ else:
             if "sticky_search_input" not in st.session_state:
                 st.session_state.sticky_search_input = ""
 
+            def _clear_search_box():
+                st.session_state.sticky_search_input = ""
+
             # 1. PENCARIAN BARANG DINAMIS (ALA WA WEB)
             col_search, col_reset = st.columns([5, 1])
             with col_search:
@@ -1127,9 +1130,7 @@ else:
                 )
 
             with col_reset:
-                if st.button("❌ Reset", use_container_width=True):
-                    st.session_state.sticky_search_input = ""
-                    st.rerun()
+                st.button("❌ Reset", on_click=_clear_search_box, use_container_width=True)
 
             # Live Search Script ala WhatsApp Web (mendeteksi input keyboard real-time tanpa perlu tekan Enter)
             st.components.v1.html(
