@@ -93,14 +93,16 @@ def get_csv_url(url, sheet_name="DataBarang"):
         return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     return url
 
-# MANAJEMEN PENAMBAHAN ITEM DARI PENCARIAN DINAMIS JS
-query_params = st.query_params
-if "add_nama" in query_params:
+# ==========================================
+# CANGKOK DATA DARI JS SEARCH DENGAN CLEANUP PARAMS
+# ==========================================
+qp = st.query_params
+if "add_nama" in qp:
     try:
-        add_nama = query_params["add_nama"]
-        add_satuan = query_params["add_satuan"]
-        add_harga = float(query_params["add_harga"])
-        add_qty = int(query_params["add_qty"])
+        add_nama = qp["add_nama"]
+        add_satuan = qp["add_satuan"]
+        add_harga = float(qp["add_harga"])
+        add_qty = int(qp["add_qty"])
         add_subtotal = add_harga * add_qty
         dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
         periode_sec = datetime.now().strftime("%B%Y")
@@ -124,7 +126,7 @@ if "add_nama" in query_params:
                 "subtotal": add_subtotal
             })
 
-        # Kirim ke Webhook
+        # Kirim ke Webhook Google Sheet
         webhook_url = st.session_state.get("webhook_url", WEBHOOK_URL_DEFAULT)
         if webhook_url and "http" in webhook_url:
             payload = {
@@ -141,10 +143,12 @@ if "add_nama" in query_params:
             except:
                 pass
 
-        st.query_params.clear()
-        st.rerun()
     except Exception as e:
-        st.query_params.clear()
+        pass
+    
+    # Bersihkan parameter URL agar tidak memblokir tombol keranjang
+    st.query_params.clear()
+    st.rerun()
 
 # ==========================================
 # 1. LOGIN
@@ -186,7 +190,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. STAFF CATALOG (DYNAMIC LIVE SEARCH + KERANJANG)
+# 3. STAFF CATALOG
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -230,7 +234,7 @@ else:
 
             json_barang = json.dumps(barang_list)
 
-            # HTML & JAVASCRIPT INSTANT SEARCH (ROBOTO FONT & DYNAMIC FILTER)
+            # HTML & JAVASCRIPT INSTANT SEARCH
             live_search_html = f"""
             <!DOCTYPE html>
             <html>
@@ -266,14 +270,13 @@ else:
                     background-color: #2563eb; color: #ffffff; border: none;
                     padding: 7px 16px; border-radius: 6px; font-weight: 700;
                     cursor: pointer; margin-left: 10px; font-size: 13px;
-                    transition: background 0.2s;
                 }}
                 .add-btn:hover {{ background-color: #1d4ed8; }}
             </style>
             </head>
             <body>
 
-            <input type="text" id="searchInput" oninput="filterBarang()" placeholder="🔍 Ketik nama barang... (langsung terfilter instan per huruf)" class="search-box" autofocus />
+            <input type="text" id="searchInput" oninput="filterBarang()" placeholder="🔍 Ketik nama barang... (langsung terfilter instan)" class="search-box" autofocus />
             <div id="barangContainer"></div>
 
             <script>
@@ -291,7 +294,7 @@ else:
                         return;
                     }}
 
-                    filtered.slice(0, 20).forEach((item, index) => {{
+                    filtered.slice(0, 15).forEach((item, index) => {{
                         const formattedPrice = new Intl.NumberFormat('id-ID', {{ style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }}).format(item.harga);
                         
                         const itemHtml = `
@@ -310,78 +313,4 @@ else:
                 }}
 
                 function tambahKeKeranjang(namaEnc, satuanEnc, harga, idx) {{
-                    const qtyVal = document.getElementById('qty-' + idx).value || 1;
-                    const topWindow = window.top || window.parent || window;
-                    const targetUrl = topWindow.location.pathname + '?add_nama=' + namaEnc + '&add_satuan=' + satuanEnc + '&add_harga=' + harga + '&add_qty=' + qtyVal;
-                    topWindow.location.href = targetUrl;
-                }}
-
-                filterBarang();
-            </script>
-            </body>
-            </html>
-            """
-            
-            st.components.v1.html(live_search_html, height=420, scrolling=True)
-
-            # ==========================================
-            # TABEL KERANJANG BELANJA (EDIT & HAPUS)
-            # ==========================================
-            st.markdown("---")
-            st.subheader("🛒 Isi Keranjang Belanja")
-
-            if st.session_state.keranjang:
-                total_nominal = 0
-                
-                for c_idx, item in enumerate(st.session_state.keranjang):
-                    total_nominal += item["subtotal"]
-                    
-                    with st.container():
-                        col_info, col_qty, col_sub, col_del = st.columns([3, 1.5, 2, 1])
-                        
-                        with col_info:
-                            st.markdown(f"**📌 {item['nama_barang']}** \n<small style='color: #94a3b8;'>Rp {item['harga']:,.0f} / {item['satuan']}</small>", unsafe_allow_html=True)
-                        
-                        with col_qty:
-                            new_qty = st.number_input(
-                                "Qty", 
-                                min_value=1, 
-                                value=int(item['qty']), 
-                                key=f"cart_edit_qty_{c_idx}", 
-                                label_visibility="collapsed"
-                            )
-                            if new_qty != item['qty']:
-                                st.session_state.keranjang[c_idx]['qty'] = new_qty
-                                st.session_state.keranjang[c_idx]['subtotal'] = new_qty * item['harga']
-                                st.rerun()
-
-                        with col_sub:
-                            st.markdown(f"**Rp {item['subtotal']:,.0f}**")
-                            
-                        with col_del:
-                            if st.button("🗑️", key=f"cart_del_{c_idx}"):
-                                st.session_state.keranjang.pop(c_idx)
-                                st.rerun()
-                    
-                    st.markdown("<hr style='margin: 4px 0; border-color: #334155;'>", unsafe_allow_html=True)
-
-                st.markdown(f"""
-                    <div class="cart-summary-box">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 15px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN DIAJUKAN:</span>
-                            <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_nominal:,.0f}</span>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                if st.button("🔴 Kosongkan Semua Keranjang"):
-                    st.session_state.keranjang = []
-                    st.rerun()
-
-            else:
-                st.info("Keranjang masih kosong. Ketik nama barang pada kolom pencarian di atas untuk memilih.")
-
-        except Exception as e:
-            st.error(f"Gagal membaca database. Error: {e}")
-    else:
-        st.info("👈 Silakan atur link Google Sheet terlebih dahulu.")
+                    const
