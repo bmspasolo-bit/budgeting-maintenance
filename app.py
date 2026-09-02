@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import re
 import requests
+import json
 
 # ==============================================================================
 # CONFIG DATABASE PERMANEN
@@ -31,7 +32,6 @@ st.markdown("""
         color: #f8fafc !important;
     }
 
-    /* Styling Input Text & Number */
     div[data-baseweb="input"] > div, input {
         background-color: #1e293b !important;
         color: #ffffff !important;
@@ -39,11 +39,6 @@ st.markdown("""
         border-radius: 8px !important;
     }
 
-    input::placeholder {
-        color: #94a3b8 !important;
-    }
-
-    /* Button Styling */
     .stButton>button { 
         background-color: #2563eb !important; 
         color: #ffffff !important; 
@@ -52,7 +47,6 @@ st.markdown("""
         font-size: 13px !important;
         width: 100% !important; 
         border: none !important;
-        padding: 6px 10px !important;
     }
     .stButton>button:hover {
         background-color: #1d4ed8 !important;
@@ -62,19 +56,6 @@ st.markdown("""
         background-color: #1e293b !important; 
         border-right: 1px solid #334155 !important;
     }
-
-    /* Card Item Style */
-    .item-card-row {
-        background-color: #1e293b;
-        border: 1px solid #334155;
-        border-left: 4px solid #3b82f6;
-        border-radius: 8px;
-        padding: 10px 14px;
-        margin-bottom: 4px;
-    }
-    .item-title { font-size: 15px; font-weight: 700; color: #60a5fa; }
-    .item-price { font-size: 14px; font-weight: 700; color: #34d399; }
-    .item-unit { color: #94a3b8; font-weight: normal; font-size: 12px; }
 
     .cart-summary-box {
         background-color: #1e293b;
@@ -111,6 +92,59 @@ def get_csv_url(url, sheet_name="DataBarang"):
         sheet_id = match.group(1)
         return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     return url
+
+# MANAJEMEN PENAMBAHAN ITEM DARI PENCARIAN DINAMIS JS
+query_params = st.query_params
+if "add_nama" in query_params:
+    try:
+        add_nama = query_params["add_nama"]
+        add_satuan = query_params["add_satuan"]
+        add_harga = float(query_params["add_harga"])
+        add_qty = int(query_params["add_qty"])
+        add_subtotal = add_harga * add_qty
+        dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
+        periode_sec = datetime.now().strftime("%B%Y")
+
+        found = False
+        for item in st.session_state.keranjang:
+            if item["nama_barang"] == add_nama:
+                item["qty"] += add_qty
+                item["subtotal"] = item["qty"] * item["harga"]
+                found = True
+                break
+        
+        if not found:
+            st.session_state.keranjang.append({
+                "departemen": dept_code,
+                "periode": periode_sec,
+                "nama_barang": add_nama,
+                "satuan": add_satuan,
+                "harga": add_harga,
+                "qty": add_qty,
+                "subtotal": add_subtotal
+            })
+
+        # Kirim ke Webhook
+        webhook_url = st.session_state.get("webhook_url", WEBHOOK_URL_DEFAULT)
+        if webhook_url and "http" in webhook_url:
+            payload = {
+                "departemen": dept_code,
+                "periode": periode_sec,
+                "nama_barang": add_nama,
+                "satuan": add_satuan,
+                "harga": add_harga,
+                "qty": add_qty,
+                "subtotal": add_subtotal
+            }
+            try:
+                requests.post(webhook_url, json=payload, timeout=3)
+            except:
+                pass
+
+        st.query_params.clear()
+        st.rerun()
+    except Exception as e:
+        st.query_params.clear()
 
 # ==========================================
 # 1. LOGIN
@@ -152,7 +186,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. STAFF CATALOG & INSTANT CARDS
+# 3. STAFF CATALOG (DYNAMIC LIVE SEARCH + KERANJANG)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -171,6 +205,7 @@ else:
         st.header("⚙️ Database")
         url_sheet = st.text_input("Link Google Sheet Utama:", value=URL_SHEET_DEFAULT)
         webhook_url = st.text_input("URL Web App Google Script:", value=WEBHOOK_URL_DEFAULT)
+        st.session_state.webhook_url = webhook_url
 
     st.title(f"📦 Katalog Barang — {st.session_state.role}")
     
@@ -180,146 +215,76 @@ else:
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            # PENCARIAN DINAMIS INSTAN
-            search_query = st.text_input(
-                "🔍 Cari Barang (Ketik untuk filter langsung):", 
-                placeholder="Ketik nama barang... (contoh: ac, semen, lampu)"
-            )
-
-            # Filter data berdasarkan teks yang diketik
-            if search_query.strip():
-                df_filtered = df_barang[df_barang['Nama Barang'].astype(str).str.contains(search_query, case=False, na=False)]
-            else:
-                df_filtered = df_barang.head(12)
-
-            st.caption(f"Menampilkan {len(df_filtered)} barang:")
-
-            # ITERASI BARANG DENGAN TOMBOL NATIVE
-            for idx, row in df_filtered.iterrows():
+            barang_list = []
+            for idx, row in df_barang.iterrows():
                 nama = str(row['Nama Barang'])
                 satuan = str(row['Satuan'])
                 harga = row['Harga']
                 harga_clean = float(re.sub(r'[^0-9]', '', str(harga))) if pd.notnull(harga) else 0
+                barang_list.append({
+                    "id": idx,
+                    "nama": nama,
+                    "satuan": satuan,
+                    "harga": harga_clean
+                })
 
-                # Kartu Barang Roboto Style
-                st.markdown(f"""
-                    <div class="item-card-row">
-                        <div class="item-title">📌 {nama}</div>
-                        <div class="item-price">Rp {harga_clean:,.0f} <span class="item-unit">/ {satuan}</span></div>
-                    </div>
-                """, unsafe_allow_html=True)
+            json_barang = json.dumps(barang_list)
 
-                col_qty, col_btn = st.columns([1, 1.2])
-                with col_qty:
-                    qty_input = st.number_input(
-                        "Qty", 
-                        min_value=1, 
-                        value=1, 
-                        step=1, 
-                        key=f"qty_field_{idx}", 
-                        label_visibility="collapsed"
-                    )
-                with col_btn:
-                    if st.button("➕ Tambah", key=f"btn_add_{idx}"):
-                        dept_code = st.session_state.role.replace(" ", "")
-                        subtotal_calc = harga_clean * qty_input
+            # HTML & JAVASCRIPT INSTANT SEARCH (ROBOTO FONT & DYNAMIC FILTER)
+            live_search_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+            <style>
+                * {{ font-family: 'Roboto', sans-serif !important; box-sizing: border-box; }}
+                body {{ background-color: #0f172a; color: #ffffff; margin: 0; padding: 0; }}
+                .search-box {{
+                    width: 100%; padding: 12px 16px; background-color: #1e293b;
+                    border: 1px solid #3b82f6; border-radius: 8px; color: #ffffff;
+                    font-size: 15px; outline: none; margin-bottom: 12px;
+                }}
+                .search-box::placeholder {{ color: #94a3b8; }}
+                .item-card {{
+                    background-color: #1e293b; border: 1px solid #334155;
+                    border-left: 4px solid #3b82f6; border-radius: 8px;
+                    padding: 10px 14px; margin-bottom: 8px;
+                }}
+                .item-title {{ font-size: 15px; font-weight: 700; color: #60a5fa; }}
+                .item-price {{ font-size: 14px; font-weight: 700; color: #34d399; margin-top: 2px; }}
+                .item-unit {{ color: #94a3b8; font-weight: normal; font-size: 12px; }}
+                .action-row {{
+                    display: flex; align-items: center; margin-top: 8px; padding-top: 8px;
+                    border-top: 1px dashed #475569;
+                }}
+                .qty-input {{
+                    width: 70px; padding: 6px; background-color: #0f172a;
+                    border: 1px solid #475569; color: #ffffff; border-radius: 6px;
+                    font-weight: bold; text-align: center; font-size: 14px;
+                }}
+                .add-btn {{
+                    background-color: #2563eb; color: #ffffff; border: none;
+                    padding: 7px 16px; border-radius: 6px; font-weight: 700;
+                    cursor: pointer; margin-left: 10px; font-size: 13px;
+                    transition: background 0.2s;
+                }}
+                .add-btn:hover {{ background-color: #1d4ed8; }}
+            </style>
+            </head>
+            <body>
 
-                        # Update jika barang sudah ada di keranjang
-                        found = False
-                        for item in st.session_state.keranjang:
-                            if item["nama_barang"] == nama:
-                                item["qty"] += qty_input
-                                item["subtotal"] = item["qty"] * item["harga"]
-                                found = True
-                                break
-                        
-                        if not found:
-                            st.session_state.keranjang.append({
-                                "departemen": dept_code,
-                                "periode": periode_sekarang,
-                                "nama_barang": nama,
-                                "satuan": satuan,
-                                "harga": harga_clean,
-                                "qty": qty_input,
-                                "subtotal": subtotal_calc
-                            })
+            <input type="text" id="searchInput" oninput="filterBarang()" placeholder="🔍 Ketik nama barang... (langsung terfilter instan per huruf)" class="search-box" autofocus />
+            <div id="barangContainer"></div>
 
-                        # Kirim ke Webhook Google Sheet
-                        if webhook_url and "http" in webhook_url:
-                            payload = {
-                                "departemen": dept_code,
-                                "periode": periode_sekarang,
-                                "nama_barang": nama,
-                                "satuan": satuan,
-                                "harga": harga_clean,
-                                "qty": qty_input,
-                                "subtotal": subtotal_calc
-                            }
-                            try:
-                                requests.post(webhook_url, json=payload, timeout=3)
-                            except:
-                                pass
+            <script>
+                const dataBarang = {json_barang};
 
-                        st.rerun()
+                function filterBarang() {{
+                    const query = document.getElementById('searchInput').value.toLowerCase().trim();
+                    const container = document.getElementById('barangContainer');
+                    container.innerHTML = '';
 
-            # ==========================================
-            # TABEL RINCIAN KERANJANG BELANJA
-            # ==========================================
-            st.markdown("---")
-            st.subheader("🛒 Isi Keranjang Belanja")
+                    const filtered = dataBarang.filter(item => item.nama.toLowerCase().includes(query));
 
-            if st.session_state.keranjang:
-                total_nominal = 0
-                
-                for c_idx, item in enumerate(st.session_state.keranjang):
-                    total_nominal += item["subtotal"]
-                    
-                    with st.container():
-                        col_info, col_qty, col_sub, col_del = st.columns([3, 1.5, 2, 1])
-                        
-                        with col_info:
-                            st.markdown(f"**📌 {item['nama_barang']}** \n<small style='color: #94a3b8;'>Rp {item['harga']:,.0f} / {item['satuan']}</small>", unsafe_allow_html=True)
-                        
-                        with col_qty:
-                            new_qty = st.number_input(
-                                "Qty", 
-                                min_value=1, 
-                                value=int(item['qty']), 
-                                key=f"cart_edit_qty_{c_idx}", 
-                                label_visibility="collapsed"
-                            )
-                            if new_qty != item['qty']:
-                                st.session_state.keranjang[c_idx]['qty'] = new_qty
-                                st.session_state.keranjang[c_idx]['subtotal'] = new_qty * item['harga']
-                                st.rerun()
-
-                        with col_sub:
-                            st.markdown(f"**Rp {item['subtotal']:,.0f}**")
-                            
-                        with col_del:
-                            if st.button("🗑️", key=f"cart_del_{c_idx}"):
-                                st.session_state.keranjang.pop(c_idx)
-                                st.rerun()
-                    
-                    st.markdown("<hr style='margin: 4px 0; border-color: #334155;'>", unsafe_allow_html=True)
-
-                st.markdown(f"""
-                    <div class="cart-summary-box">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 15px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN DIAJUKAN:</span>
-                            <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_nominal:,.0f}</span>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                if st.button("🔴 Kosongkan Semua Keranjang"):
-                    st.session_state.keranjang = []
-                    st.rerun()
-
-            else:
-                st.info("Keranjang masih kosong. Silakan pilih barang di atas.")
-
-        except Exception as e:
-            st.error(f"Gagal membaca database. Error: {e}")
-    else:
-        st.info("👈 Silakan atur link Google Sheet terlebih dahulu.")
+                    if (filtered.length === 0) {{
+                        container.innerHTML = '<div style="color: #ef4444; padding
