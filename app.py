@@ -117,6 +117,19 @@ st.markdown(
         gap: 10px;
     }
     </style>
+
+    <script>
+    // Fitur auto-trigger instant search seperti WhatsApp Web saat user mengetik
+    let searchTimer = null;
+    document.addEventListener('input', function(e) {
+        if (e.target && e.target.getAttribute('aria-label') === '🔍 Cari Barang atau Kode:') {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => {
+                e.target.dispatchEvent(new Event('change', { bubbles: true }));
+            }, 300);
+        }
+    });
+    </script>
 """,
     unsafe_allow_html=True,
 )
@@ -236,9 +249,9 @@ elif st.session_state.role == "Admin":
                     continue
 
                 dept_df["Hapus"] = False
+                # Kolom periode dihilangkan agar menghemat ruang
                 cols_to_show = [
                     "Hapus",
-                    "periode",
                     "nama_barang",
                     "satuan",
                     "harga",
@@ -254,7 +267,6 @@ elif st.session_state.role == "Admin":
                         "Hapus": st.column_config.CheckboxColumn(
                             "🗑️ Hapus", default=False
                         ),
-                        "periode": st.column_config.TextColumn("Periode"),
                         "nama_barang": st.column_config.TextColumn("Nama Barang"),
                         "satuan": st.column_config.TextColumn("Satuan"),
                         "harga": st.column_config.NumberColumn(
@@ -274,6 +286,7 @@ elif st.session_state.role == "Admin":
                 )
 
                 edited_d_df["departemen"] = dept_name
+                edited_d_df["periode"] = pilihan_periode
                 edited_dept_dfs.append(edited_d_df)
                 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -427,14 +440,19 @@ elif st.session_state.role == "Admin":
                 body { background-color: #ffffff !important; padding: 25px; margin: 0; }
                 h2 { text-align: center; margin-bottom: 5px; color: #000000; }
                 p.sub { text-align: center; font-size: 13px; color: #333333; margin-top: 0; margin-bottom: 20px; }
-                .signature-container { margin-top: 50px; width: 100%; clear: both; }
-                .signature-table { width: 100%; border: none !important; margin-top: 30px; }
-                .signature-table td { border: none !important; text-align: center; vertical-align: bottom; height: 90px; padding: 0; }
+                .signature-container { margin-top: 25px; margin-bottom: 25px; width: 100%; clear: both; }
+                .signature-table { width: 100%; border: none !important; margin-top: 15px; }
+                .signature-table td { border: none !important; text-align: center; vertical-align: bottom; height: 85px; padding: 0; }
                 .btn-print { background-color: #2563eb; color: #ffffff !important; padding: 10px 20px; font-size: 14px; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 15px; }
                 .btn-print:hover { background-color: #1d4ed8; }
                 @media print { .btn-print { display: none; } }
             </style>
             """
+
+            # Teks sub judul (tulisan filter semua departemen dihilangkan)
+            sub_title_text = f"Periode: <b>{pilihan_periode}</b>"
+            if pilihan_dept != "Semua Departemen":
+                sub_title_text += f" | Departemen: <b>{pilihan_dept}</b>"
 
             html_print = f"""
             <!DOCTYPE html>
@@ -443,9 +461,10 @@ elif st.session_state.role == "Admin":
             <body>
                 <button class='btn-print' onclick='window.print()'>🖨️ Cetak / Simpan PDF Sekarang</button>
                 <h2>PROPOSAL PENGAJUAN ANGGARAN BUDGETING</h2>
-                <p class='sub'>Periode: <b>{pilihan_periode}</b> | Filter: <b>{pilihan_dept}</b></p>
-                {tables_html}
-                <div style='clear: both; margin-top: 30px;'>
+                <p class='sub'>{sub_title_text}</p>
+                
+                <!-- REKAPITULASI DI BAGIAN ATAS SETELAH JUDUL -->
+                <div style='clear: both; margin-top: 10px; margin-bottom: 20px;'>
                     <h4 style='margin-bottom: 8px; font-size: 14px; color: #000;'>📊 REKAPITULASI TOTAL ANGGARAN DEPARTEMEN</h4>
                     <table style='width: 100%; border-collapse: collapse;'>
                         <thead>
@@ -463,15 +482,21 @@ elif st.session_state.role == "Admin":
                         </tbody>
                     </table>
                 </div>
+
+                <!-- TANDA TANGAN (2 SAJA) DI ATAS SETELAH REKAPITULASI -->
                 <div class='signature-container'>
                     <table class='signature-table'>
                         <tr>
-                            <td style='width: 33%;'>Diajukan oleh,<br><br><br><br><br>_______________________<br><b>Kepala Departemen / Staff</b></td>
-                            <td style='width: 33%;'>Diverifikasi oleh,<br><br><br><br><br>_______________________<br><b>Admin / Tim Budgeting</b></td>
-                            <td style='width: 33%;'>Disetujui oleh,<br><br><br><br><br>_______________________<br><b>Pimpinan / Direktur</b></td>
+                            <td style='width: 50%;'>Dibuat oleh,<br><br><br><br><br><b>Ali Sukmawan BM</b><br><span>Building Manager</span></td>
+                            <td style='width: 50%;'>Disetujui oleh,<br><br><br><br><br><b>Aristya Pambudi</b><br><span>General Mgr</span></td>
                         </tr>
                     </table>
                 </div>
+
+                <hr style='border: 0; border-top: 2px solid #334155; margin: 30px 0 20px 0;'>
+
+                <!-- RINCIAN BARANG SETELAH REKAP DAN TANDA TANGAN -->
+                {tables_html}
             </body>
             </html>
             """
@@ -524,18 +549,26 @@ else:
                 )
             )
 
+            # Inisialisasi state search jika belum ada
+            if "search_query_val" not in st.session_state:
+                st.session_state.search_query_val = ""
+
             # 1. PENCARIAN BARANG DINAMIS (ALA WA WEB)
             col_search, col_reset = st.columns([5, 1])
             with col_search:
                 search_query = st.text_input(
                     "🔍 Cari Barang atau Kode:",
-                    placeholder="🔍 Cari atau mulai ketik nama barang...",
+                    value=st.session_state.search_query_val,
+                    placeholder="🔍 Cari atau ketik nama barang (otomatis terfilter)...",
                     key="sticky_search_input",
                     label_visibility="collapsed",
                 )
+                st.session_state.search_query_val = search_query
+
             with col_reset:
+                # Tombol reset untuk menghapus teks ketikan saja
                 if st.button("❌ Reset", use_container_width=True):
-                    st.session_state.sticky_search_input = ""
+                    st.session_state.search_query_val = ""
                     st.rerun()
 
             if search_query:
@@ -767,7 +800,7 @@ else:
                     + (f" pada periode **{pilihan_periode_dept}**:" if pilihan_periode_dept != "Semua Periode" else ":")
                 )
 
-                # Menghilangkan kolom periode dari tabel agar menghemat ruang
+                # Tampilkan Tabel Riwayat (tanpa kolom periode agar hemat ruang)
                 st.dataframe(
                     df_history[[
                         "nama_barang",
@@ -794,6 +827,116 @@ else:
                     "**Total Anggaran Terdaftar Admin:"
                     f" :green[Rp {tot_submitted:,.0f}]**"
                 )
+
+                # PREVIEW & CETAK DOKUMEN PROPOSAL DEPARTEMEN (SEPERTI DI ADMIN)
+                st.markdown("<br>", unsafe_allow_html=True)
+                show_dept_preview = st.toggle(
+                    "🖨️ Tampilkan Preview & Cetak Dokumen PDF (Departemen)", value=False, key="dept_print_preview_toggle"
+                )
+
+                if show_dept_preview:
+                    dept_rows_html = ""
+                    for idx, r in enumerate(df_history.itertuples(), start=1):
+                        sub = float(r.harga) * float(r.qty)
+                        dept_rows_html += f"""
+                        <tr>
+                            <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{idx}</td>
+                            <td style='border: 1px solid #000; padding: 6px;'>{r.nama_barang}</td>
+                            <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{r.qty}</td>
+                            <td style='text-align:center; border: 1px solid #000; padding: 6px;'>{r.satuan}</td>
+                            <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {r.harga:,.0f}</td>
+                            <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {sub:,.0f}</td>
+                        </tr>
+                        """
+
+                    css_dept_style = """
+                    <style>
+                        * { color: #000000 !important; font-family: Arial, sans-serif; }
+                        body { background-color: #ffffff !important; padding: 25px; margin: 0; }
+                        h2 { text-align: center; margin-bottom: 5px; color: #000000; }
+                        p.sub { text-align: center; font-size: 13px; color: #333333; margin-top: 0; margin-bottom: 20px; }
+                        .signature-container { margin-top: 25px; margin-bottom: 25px; width: 100%; clear: both; }
+                        .signature-table { width: 100%; border: none !important; margin-top: 15px; }
+                        .signature-table td { border: none !important; text-align: center; vertical-align: bottom; height: 85px; padding: 0; }
+                        .btn-print { background-color: #2563eb; color: #ffffff !important; padding: 10px 20px; font-size: 14px; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 15px; }
+                        .btn-print:hover { background-color: #1d4ed8; }
+                        @media print { .btn-print { display: none; } }
+                    </style>
+                    """
+
+                    sub_dept_text = f"Periode: <b>{pilihan_periode_dept}</b> | Departemen: <b>{dept_aktif}</b>"
+
+                    html_dept_print = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>{css_dept_style}</head>
+                    <body>
+                        <button class='btn-print' onclick='window.print()'>🖨️ Cetak / Simpan PDF Sekarang</button>
+                        <h2>PROPOSAL PENGAJUAN ANGGARAN BUDGETING</h2>
+                        <p class='sub'>{sub_dept_text}</p>
+                        
+                        <!-- REKAPITULASI DI ATAS SETELAH JUDUL -->
+                        <div style='clear: both; margin-top: 10px; margin-bottom: 20px;'>
+                            <h4 style='margin-bottom: 8px; font-size: 14px; color: #000;'>📊 REKAPITULASI TOTAL ANGGARAN DEPARTEMEN</h4>
+                            <table style='width: 100%; border-collapse: collapse;'>
+                                <thead>
+                                    <tr style='background-color: #e2e8f0; color: #000;'>
+                                        <th style='border: 1px solid #000; padding: 8px; text-align: left;'>Departemen</th>
+                                        <th style='border: 1px solid #000; padding: 8px; text-align: right; width: 30%;'>Total Pengajuan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style='padding: 8px; border: 1px solid #000;'>Departemen {dept_aktif}</td>
+                                        <td style='padding: 8px; border: 1px solid #000; text-align: right; font-weight: bold;'>Rp {tot_submitted:,.0f}</td>
+                                    </tr>
+                                    <tr style='background-color: #cbd5e1; font-weight: bold;'>
+                                        <td style='border: 1px solid #000; padding: 10px; text-align: right;'>GRAND TOTAL ANGGARAN:</td>
+                                        <td style='border: 1px solid #000; padding: 10px; text-align: right; font-size: 15px;'>Rp {tot_submitted:,.0f}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- TANDA TANGAN (2 SAJA) DI ATAS SETELAH REKAPITULASI -->
+                        <div class='signature-container'>
+                            <table class='signature-table'>
+                                <tr>
+                                    <td style='width: 50%;'>Dibuat oleh,<br><br><br><br><br><b>Ali Sukmawan BM</b><br><span>Building Manager</span></td>
+                                    <td style='width: 50%;'>Disetujui oleh,<br><br><br><br><br><b>Aristya Pambudi</b><br><span>General Mgr</span></td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <hr style='border: 0; border-top: 2px solid #334155; margin: 30px 0 20px 0;'>
+
+                        <!-- RINCIAN BARANG SETELAH REKAP DAN TANDA TANGAN -->
+                        <h3 style='margin-top: 25px; margin-bottom: 8px; color: #000000; font-size: 16px;'>🏢 Departemen: {dept_aktif}</h3>
+                        <table style='width: 100%; border-collapse: collapse; margin-bottom: 15px;'>
+                            <thead>
+                                <tr style='background-color: #f2f2f2; color: #000;'>
+                                    <th style='width: 5%; border: 1px solid #000; padding: 6px;'>No</th>
+                                    <th style='border: 1px solid #000; padding: 6px; text-align: left;'>Nama Barang</th>
+                                    <th style='width: 10%; border: 1px solid #000; padding: 6px;'>Qty</th>
+                                    <th style='width: 10%; border: 1px solid #000; padding: 6px;'>Satuan</th>
+                                    <th style='width: 20%; border: 1px solid #000; padding: 6px; text-align: right;'>Harga Unit</th>
+                                    <th style='width: 20%; border: 1px solid #000; padding: 6px; text-align: right;'>Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {dept_rows_html}
+                                <tr style='font-weight: bold; background-color: #e6e6e6; color: #000;'>
+                                    <td colspan='5' style='text-align:right; border: 1px solid #000; padding: 6px;'>SUBTOTAL {str(dept_aktif).upper()}:</td>
+                                    <td style='text-align:right; border: 1px solid #000; padding: 6px;'>Rp {tot_submitted:,.0f}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </body>
+                    </html>
+                    """
+
+                    st.components.v1.html(html_dept_print, height=750, scrolling=True)
+
             else:
                 st.caption(
                     "Belum ada pengajuan anggaran yang disubmit ke Admin untuk"
