@@ -94,7 +94,7 @@ def get_csv_url(url, sheet_name="DataBarang"):
     return url
 
 # ==========================================
-# CANGKOK DATA DARI JS SEARCH DENGAN CLEANUP PARAMS
+# MENANGKAP INPUT TAMBAH BARANG DARI PARAMS
 # ==========================================
 qp = st.query_params
 if "add_nama" in qp:
@@ -146,7 +146,7 @@ if "add_nama" in qp:
     except Exception as e:
         pass
     
-    # Bersihkan parameter URL agar tidak memblokir tombol keranjang
+    # Bersihkan parameter agar tidak terkunci saat aksi lain
     st.query_params.clear()
     st.rerun()
 
@@ -190,7 +190,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. STAFF CATALOG
+# 3. STAFF CATALOG (LIVE SEARCH + FORM ACTION IFRAME FIX)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -234,7 +234,7 @@ else:
 
             json_barang = json.dumps(barang_list)
 
-            # HTML & JAVASCRIPT INSTANT SEARCH
+            # HTML + FORM SUBMIT DENGAN TARGET _TOP (BEBAS PEMBATASAN IFRAME)
             live_search_html = f"""
             <!DOCTYPE html>
             <html>
@@ -257,7 +257,7 @@ else:
                 .item-title {{ font-size: 15px; font-weight: 700; color: #60a5fa; }}
                 .item-price {{ font-size: 14px; font-weight: 700; color: #34d399; margin-top: 2px; }}
                 .item-unit {{ color: #94a3b8; font-weight: normal; font-size: 12px; }}
-                .action-row {{
+                .action-form {{
                     display: flex; align-items: center; margin-top: 8px; padding-top: 8px;
                     border-top: 1px dashed #475569;
                 }}
@@ -302,21 +302,17 @@ else:
                                 <div class="item-title">📌 ${{item.nama}}</div>
                                 <div class="item-price">${{formattedPrice}} <span class="item-unit">/ ${{item.satuan}}</span></div>
                                 
-                                <div class="action-row">
-                                    <input type="number" id="qty-${{index}}" value="1" min="1" class="qty-input" />
-                                    <button class="add-btn" onclick="tambahKeKeranjang('${{encodeURIComponent(item.nama)}}', '${{encodeURIComponent(item.satuan)}}', ${{item.harga}}, ${{index}})">➕ Tambah</button>
-                                </div>
+                                <form method="GET" target="_top" class="action-form">
+                                    <input type="hidden" name="add_nama" value="${{item.nama}}" />
+                                    <input type="hidden" name="add_satuan" value="${{item.satuan}}" />
+                                    <input type="hidden" name="add_harga" value="${{item.harga}}" />
+                                    <input type="number" name="add_qty" value="1" min="1" class="qty-input" />
+                                    <button type="submit" class="add-btn">➕ Tambah</button>
+                                </form>
                             </div>
                         `;
                         container.innerHTML += itemHtml;
                     }});
-                }}
-
-                function tambahKeKeranjang(namaEnc, satuanEnc, harga, idx) {{
-                    const qtyVal = document.getElementById('qty-' + idx).value || 1;
-                    const topWin = window.top || window.parent || window;
-                    const baseUrl = topWin.location.href.split('?')[0];
-                    topWin.location.href = baseUrl + '?add_nama=' + namaEnc + '&add_satuan=' + satuanEnc + '&add_harga=' + harga + '&add_qty=' + qtyVal;
                 }}
 
                 filterBarang();
@@ -328,7 +324,7 @@ else:
             st.components.v1.html(live_search_html, height=380, scrolling=True)
 
             # ==========================================
-            # TABEL KERANJANG BELANJA (EDIT & HAPUS WORKING 100%)
+            # TABEL KERANJANG BELANJA (WORKING 100%)
             # ==========================================
             st.markdown("---")
             st.subheader("🛒 Isi Keranjang Belanja")
@@ -386,7 +382,7 @@ else:
                     st.rerun()
 
             else:
-                st.info("Keranjang masih kosong. Pilih barang dari daftar pencarian di atas.")
+                st.info("Keranjang masih kosong. Ketik nama barang pada kolom pencarian di atas untuk memilih.")
 
         except Exception as e:
             st.error(f"Gagal membaca database. Error: {e}")
