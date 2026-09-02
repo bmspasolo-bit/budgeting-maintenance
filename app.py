@@ -632,18 +632,14 @@ else:
             # 1. PENCARIAN BARANG DINAMIS (ALA WA WEB)
             col_search, col_reset = st.columns([5, 1])
             with col_search:
-                # Callback untuk instant update
-                def on_search_change():
-                    st.session_state.search_query_val = st.session_state.sticky_search_input
-
                 search_query = st.text_input(
                     "🔍 Cari Barang atau Kode:",
                     value=st.session_state.search_query_val,
-                    placeholder="🔍 Ketik nama barang (langsung terfilter dinamis)...",
+                    placeholder="🔍 Ketik nama barang (langsung terfilter dinamis tanpa tekan Enter)...",
                     key="sticky_search_input",
-                    on_change=on_search_change,
                     label_visibility="collapsed",
                 )
+                st.session_state.search_query_val = search_query
 
             with col_reset:
                 # Tombol reset untuk menghapus teks ketikan saja
@@ -652,21 +648,52 @@ else:
                     st.session_state.sticky_search_input = ""
                     st.rerun()
 
-            # Script client-side agar filter berjalan real-time saat mengetik tanpa perlu enter
+            # Script client-side robust agar pencarian langsung merespons setiap ketikan tanpa perlu tekan Enter
             st.components.v1.html(
                 """
                 <script>
-                const searchInput = window.parent.document.querySelector('input[aria-label="🔍 Cari Barang atau Kode:"]');
-                if (searchInput && !searchInput.dataset.hasListener) {
-                    searchInput.dataset.hasListener = "true";
-                    let timer = null;
-                    searchInput.addEventListener('input', function(e) {
-                        clearTimeout(timer);
-                        timer = setTimeout(() => {
-                            searchInput.dispatchEvent(new Event('change', { bubbles: true }));
-                        }, 250);
-                    });
-                }
+                (function() {
+                    const parentDoc = window.parent.document;
+                    let lastQuery = "";
+                    let debounceTimer = null;
+
+                    function attachSearchListener() {
+                        const inputs = parentDoc.querySelectorAll('input[type="text"]');
+                        let targetInput = null;
+                        for (let inp of inputs) {
+                            if (inp.placeholder && inp.placeholder.includes("Ketik nama barang")) {
+                                targetInput = inp;
+                                break;
+                            }
+                        }
+
+                        if (targetInput && !targetInput.dataset.waSearchAttached) {
+                            targetInput.dataset.waSearchAttached = "true";
+                            targetInput.addEventListener('input', function(e) {
+                                const currentVal = e.target.value;
+                                clearTimeout(debounceTimer);
+                                debounceTimer = setTimeout(() => {
+                                    if (currentVal !== lastQuery) {
+                                        lastQuery = currentVal;
+                                        // Kirim event change dan tombol Enter sintetis ke input Streamlit
+                                        targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+                                        const enterEvent = new KeyboardEvent('keydown', {
+                                            key: 'Enter',
+                                            code: 'Enter',
+                                            keyCode: 13,
+                                            which: 13,
+                                            bubbles: true
+                                        });
+                                        targetInput.dispatchEvent(enterEvent);
+                                    }
+                                }, 350);
+                            });
+                        }
+                    }
+
+                    attachSearchListener();
+                    setInterval(attachSearchListener, 600);
+                })();
                 </script>
                 """,
                 height=0,
@@ -686,9 +713,8 @@ else:
 
             filtered_df.insert(0, "Pilih", False)
             filtered_df["Jumlah (Qty)"] = 1
-            filtered_df["Keterangan"] = ""
 
-            # 2. TABEL BARANG
+            # 2. TABEL BARANG (Keterangan dihilangkan dari tabel pencarian)
             if search_query:
                 st.caption(
                     f"🔍 Ditemukan **{len(filtered_df)}** barang yang cocok dengan kata kunci :blue['{search_query}']"
@@ -704,7 +730,6 @@ else:
                         "Satuan",
                         "Harga_Clean",
                         "Jumlah (Qty)",
-                        "Keterangan",
                     ]],
                     column_config={
                         "Pilih": st.column_config.CheckboxColumn(
@@ -721,9 +746,6 @@ else:
                         ),
                         "Jumlah (Qty)": st.column_config.NumberColumn(
                             "🔢 Qty", min_value=1, step=1, required=True
-                        ),
-                        "Keterangan": st.column_config.TextColumn(
-                            "📝 Keterangan / Keperluan"
                         ),
                     },
                     hide_index=True,
@@ -747,7 +769,6 @@ else:
                         add_satuan = row["Satuan"]
                         add_harga = float(row["Harga_Clean"])
                         add_qty = int(row["Jumlah (Qty)"])
-                        add_ket = str(row["Keterangan"]).strip() if pd.notnull(row["Keterangan"]) else ""
                         add_subtotal = add_harga * add_qty
 
                         found = False
@@ -755,8 +776,6 @@ else:
                             if item["nama_barang"] == add_nama and item["periode"] == pilihan_periode_dept:
                                 item["qty"] += add_qty
                                 item["subtotal"] = item["qty"] * item["harga"]
-                                if add_ket:
-                                    item["keterangan"] = (item.get("keterangan", "") + "; " + add_ket).strip("; ")
                                 found = True
                                 break
 
@@ -769,7 +788,7 @@ else:
                                 "harga": add_harga,
                                 "qty": add_qty,
                                 "subtotal": add_subtotal,
-                                "keterangan": add_ket,
+                                "keterangan": "",
                             })
 
                     st.toast(
@@ -795,14 +814,13 @@ else:
                     total_nominal += item["subtotal"]
 
                     with st.container():
-                        col_info, col_qty, col_sub, col_del = st.columns([3, 1.5, 2, 1])
+                        col_info, col_qty, col_sub, col_del = st.columns([3, 1.5, 2, 0.8])
 
                         with col_info:
-                            ket_text = f"<br><small style='color: #60a5fa;'>📝 {item.get('keterangan', '-')}</small>" if item.get('keterangan') else ""
                             st.markdown(
                                 f"**📌 {item['nama_barang']}** \n<small style='color:"
                                 f" #94a3b8;'>Rp {item['harga']:,.0f} /"
-                                f" {item['satuan']}</small> {ket_text}",
+                                f" {item['satuan']}</small>",
                                 unsafe_allow_html=True,
                             )
 
@@ -827,6 +845,18 @@ else:
                         with col_del:
                             if st.button("🗑️", key=f"cart_del_key_{c_idx}"):
                                 to_delete = c_idx
+
+                        # Isian Keterangan / Keperluan per barang yang ingin disubmit ke Admin
+                        current_ket = item.get("keterangan", "")
+                        new_ket = st.text_input(
+                            f"Keterangan / Keperluan ({item['nama_barang']}):",
+                            value=current_ket,
+                            placeholder="📝 Tuliskan keterangan untuk keperluan apa barang ini dipesan...",
+                            key=f"cart_ket_key_{c_idx}",
+                            label_visibility="collapsed",
+                        )
+                        if new_ket != current_ket:
+                            st.session_state.keranjang[c_idx]["keterangan"] = new_ket
 
                     st.markdown(
                         "<hr style='margin: 4px 0; border-color: #334155;'>",
