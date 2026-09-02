@@ -11,31 +11,31 @@ URL_SHEET_DEFAULT = "https://docs.google.com/spreadsheets/d/1dhbkNELRxIa9HAexkpT
 WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzfJdpAGYAD09r-q2yL4L7u2DBWein3N5wH5qI9R2QY5apPoLeKkh/exec"
 # ==============================================================================
 
-# Konfigurasi Halaman
+# Konfigurasi Halaman Streamlit
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
-# CSS KONTRASTING & MOBILE FRIENDLY (FIX DARK DROPDOWN & INPUTS)
+# CUSTOM CSS: PERBAIKAN WAKTU DARK MODE & LAYOUT RINGKAS WA WEB
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 
-    /* Terapkan Font Utama */
+    /* Terapkan Font Utama Roboto */
     html, body, [class*="css"] {
         font-family: 'Roboto', sans-serif !important;
     }
 
-    /* Paksa background halaman netral terang */
+    /* Background Utama Aplikasi Tema Dark Elegan */
     .stApp {
-        background-color: #0f172a !important; /* Tema Gelap Elegan Default */
-        color: #f8fafc !important;
+        background-color: #0f172a !important;
+        color: #ffffff !important;
     }
 
-    /* SEMUA TEKS DAN LABEL DIPAKSA KONTRAS TERANG */
+    /* PAKSA WARNA SEMUA TEKS & LABEL AGAR TERANG BISA DIBACA */
     h1, h2, h3, h4, h5, h6, p, span, label, div, td, th {
         color: #f8fafc !important;
     }
 
-    /* STYLING INPUT BOX & DROPDOWN (PASTE / KETIK / PILIH) */
+    /* STYLING INPUT BOX & SELECTBOX AGAR TULISAN TERANG / JELAS */
     div[data-baseweb="select"] > div, 
     div[data-baseweb="input"] > div, 
     input, 
@@ -46,12 +46,16 @@ st.markdown("""
         border-radius: 8px !important;
     }
 
-    /* PAKSA WARNA TEKS DALAM INPUT AGAR TETAP TERANG TERLIHAT */
-    input::placeholder, textarea::placeholder {
+    /* WARNA TEKS SAAT MENGETIK PADA INPUT */
+    input {
+        color: #ffffff !important;
+        font-weight: 500 !important;
+    }
+    input::placeholder {
         color: #94a3b8 !important;
     }
 
-    /* STYLING POPUP DROPDOWN (SAAT DIKLIK) */
+    /* STYLING MENU POPUP DROPDOWN (SAAT DIKLIK) */
     div[data-baseweb="popover"], 
     div[data-baseweb="menu"], 
     ul[role="listbox"],
@@ -60,28 +64,26 @@ st.markdown("""
         color: #ffffff !important;
     }
     
-    /* Highlight saat item dropdown di-hover / dipilih */
+    /* Highlight Dropdown saat di-hover / dipilih */
     li[role="option"]:hover, li[role="option"][aria-selected="true"] {
-        background-color: #3b82f6 !important;
+        background-color: #2563eb !important;
         color: #ffffff !important;
     }
 
-    /* Styling Teks Dropdown yang Terpilih */
     div[data-baseweb="select"] * {
         color: #ffffff !important;
     }
 
-    /* BUTTON UTAMA */
+    /* STYLING TOMBOL UMUM & LOGIN */
     .stButton>button { 
         background-color: #2563eb !important; 
         color: #ffffff !important; 
         border-radius: 8px !important; 
         font-weight: 700 !important; 
-        font-size: 15px !important;
+        font-size: 14px !important;
         width: 100% !important; 
-        height: 45px !important; 
         border: none !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2) !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
     }
     .stButton>button:hover {
         background-color: #1d4ed8 !important;
@@ -93,32 +95,31 @@ st.markdown("""
         border-right: 1px solid #334155 !important;
     }
     
-    /* KARTU BARANG (STYLE WA WEB SEARCH RESULT) */
+    /* KARTU BARANG MODEL WA WEB */
     .wa-card {
         background-color: #1e293b !important;
-        padding: 14px 18px !important;
-        border-radius: 10px !important;
-        border-left: 5px solid #3b82f6 !important;
+        padding: 10px 14px !important;
+        border-radius: 8px !important;
+        border-left: 4px solid #3b82f6 !important;
         border: 1px solid #334155 !important;
-        margin-bottom: 12px !important;
+        margin-bottom: 6px !important;
     }
     .wa-title { 
-        font-size: 16px !important; 
+        font-size: 15px !important; 
         font-weight: 700 !important; 
         color: #60a5fa !important; 
     }
     .wa-price { 
-        font-size: 15px !important; 
+        font-size: 14px !important; 
         color: #34d399 !important; 
         font-weight: 700 !important; 
-        margin-top: 2px !important; 
     }
     .wa-unit { 
-        font-size: 13px !important; 
+        font-size: 12px !important; 
         color: #94a3b8 !important; 
     }
 
-    /* PRINT LAYOUT FOR ADMIN */
+    /* FORMAT CETAK PROPOSAL ADMIN */
     .print-container {
         background-color: #ffffff !important;
         padding: 20px !important;
@@ -174,7 +175,7 @@ def get_csv_url(url, sheet_name="DataBarang"):
 # ==========================================
 if not st.session_state.logged_in:
     st.title("🔑 Portal Login Budgeting")
-    st.caption("Silakan pilih departemen dan masukkan password untuk melanjutkan.")
+    st.write("Silakan pilih departemen dan masukkan password:")
     
     role_pilihan = st.selectbox("Pilih Akses / Departemen:", list(ROLE_DB.keys()))
     password_input = st.text_input("Kata Sandi (Password):", type="password")
@@ -283,7 +284,7 @@ elif st.session_state.role == "Admin":
             st.error(f"Gagal memuat proposal. Error: {e}")
 
 # ==========================================
-# 3. HALAMAN UTAMA STAFF (DINAMIS WA WEB SEARCH)
+# 3. HALAMAN UTAMA STAFF (PENCARIAN ALA WA WEB)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -311,28 +312,28 @@ else:
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            # PENCARIAN DINAMIS ALA WA WEB
+            # PENCARIAN DINAMIS MODEL WA WEB
             search_text = st.text_input(
-                "💬 Cari barang (seperti WA Web):", 
-                placeholder="Ketik nama barang... (cth: ac, semen, sapu, lampu)"
+                "🔍 Cari atau pilih barang:", 
+                placeholder="Ketik nama barang di sini..."
             )
 
-            # Filter Otomatis & Live
+            # Filter Dinamis Instan
             if search_text.strip():
                 df_filtered = df_barang[df_barang['Nama Barang'].astype(str).str.contains(search_text, case=False, na=False)]
             else:
-                df_filtered = df_barang.head(10) # Menampilkan 10 awal jika belum mengetik
+                df_filtered = df_barang.head(15) # Tampilkan 15 item teratas jika belum mengetik
 
-            st.caption(f"Menampilkan {len(df_filtered)} barang yang cocok:")
+            st.caption(f"Menampilkan {len(df_filtered)} barang yang sesuai:")
 
-            # Render Barang Langsung di Kolom Bawah secara Dinamis
+            # MENAMPILKAN DAFTAR BARANG
             for idx, row in df_filtered.iterrows():
                 nama = str(row['Nama Barang'])
                 satuan = str(row['Satuan'])
                 harga = row['Harga']
                 harga_clean = float(re.sub(r'[^0-9]', '', str(harga))) if pd.notnull(harga) else 0
 
-                # Card Tampilan Barang
+                # Kartu Ringkas Nama & Harga
                 st.markdown(f"""
                     <div class="wa-card">
                         <div class="wa-title">📌 {nama}</div>
@@ -340,19 +341,19 @@ else:
                     </div>
                 """, unsafe_allow_html=True)
 
-                # Form Input Jumlah (Qty) & Tambah
-                col_qty, col_btn = st.columns([1, 2])
-                with col_qty:
+                # Kolom Qty & Tombol Ringkas "+ Tambah"
+                c1, c2 = st.columns([1, 1])
+                with c1:
                     qty_input = st.number_input(
-                        "Qty", 
+                        "Jumlah (Qty):", 
                         min_value=1, 
                         value=1, 
                         step=1, 
-                        key=f"qty_{idx}"
+                        key=f"qty_{idx}",
+                        label_visibility="collapsed"
                     )
-                with col_btn:
-                    st.write("") # Spacing
-                    if st.button(f"➕ Tambah {nama}", key=f"btn_{idx}"):
+                with c2:
+                    if st.button("➕ Tambah", key=f"btn_{idx}"):
                         subtotal_calc = harga_clean * qty_input
                         dept_code = st.session_state.role.replace(" ", "")
                         
@@ -369,14 +370,14 @@ else:
                         if webhook_url and "http" in webhook_url:
                             res = requests.post(webhook_url, json=payload)
                             if res.status_code == 200:
-                                st.success(f"✅ {nama} ({qty_input} {satuan}) tersimpan ke Sheet!")
+                                st.success(f"✅ {nama} ({qty_input} {satuan}) berhasil ditambahkan!")
                             else:
                                 st.error("Gagal terhubung ke Google Sheet.")
                         
                         st.session_state.keranjang.append(payload)
                         st.rerun()
 
-            # KERANJANG BELANJA
+            # TABEL KERANJANG BELANJA
             if st.session_state.keranjang:
                 st.markdown("---")
                 st.subheader("🛒 Pesanan Tersimpan Periode Ini")
@@ -386,4 +387,4 @@ else:
         except Exception as e:
             st.error(f"Gagal membaca database. Error: {e}")
     else:
-        st.info("👈 Silakan konfigurasi link Google Sheet.")
+        st.info("👈 Silakan atur link Google Sheet terlebih dahulu.")
