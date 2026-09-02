@@ -1240,7 +1240,7 @@ else:
                 )
 
                 submit_button = st.form_submit_button(
-                    "➕ Masukkan Barang Terpilih ke Keranjang",
+                    "🛒",
                     type="primary",
                     use_container_width=True,
                 )
@@ -1289,7 +1289,7 @@ else:
 
             # 3. KERANJANG BELANJA DEPARTEMEN (BISA DI-EDIT SEBELUM SUBMIT KE ADMIN)
             st.markdown("---")
-            st.subheader("🛒 Isi Keranjang Belanja (Bisa Diedit Sebelum Disubmit ke Admin)")
+            st.subheader("🛒 Isi Keranjang")
             st.caption("💡 Anda dapat mengubah **Qty**, menulis/mengedit **Keterangan Keperluan**, atau **Menghapus Item** agar tidak salah kirim ke admin.")
 
             if st.session_state.keranjang:
@@ -1400,7 +1400,7 @@ else:
 
             # 4. RIWAYAT PENGAJUAN DEPARTEMEN
             st.markdown("---")
-            st.subheader(f"📋 Riwayat & Status Pengajuan Anggaran ({dept_aktif})")
+            st.subheader(f"📋 Riwayat ({dept_aktif})")
 
             submitted_dept_data = [
                 x
@@ -1427,10 +1427,6 @@ else:
                     df_history = df_history_all.copy()
 
                 tot_submitted = df_history["subtotal"].sum()
-                st.caption(
-                    f"Berikut adalah barang yang sudah terdaftar di Admin untuk departemen **{dept_aktif}**"
-                    + (f" pada periode **{pilihan_periode_dept_hist}**:" if pilihan_periode_dept_hist != "Semua Periode" else ":")
-                )
 
                 # Tampilkan Tabel Riwayat (tanpa kolom periode agar hemat ruang, dengan keterangan)
                 st.dataframe(
