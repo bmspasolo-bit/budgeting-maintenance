@@ -184,7 +184,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. STAFF CATALOG (COMMUNICATION BRIDGE FIX)
+# 3. STAFF CATALOG (FULL FUNCTIONAL BRIDGE)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -207,6 +207,58 @@ else:
 
     st.title(f"📦 Katalog Barang — {st.session_state.role}")
     
+    # --- LOGIKA PENANGKAP EVENT DARI JAVASCRIPT ---
+    if "action_add" in st.query_params:
+        try:
+            add_nama = st.query_params["action_add"]
+            add_satuan = st.query_params.get("satuan", "pcs")
+            add_harga = float(st.query_params.get("harga", 0))
+            add_qty = int(st.query_params.get("qty", 1))
+            
+            dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
+            periode_sec = datetime.now().strftime("%B%Y")
+
+            found = False
+            for item in st.session_state.keranjang:
+                if item["nama_barang"] == add_nama:
+                    item["qty"] += add_qty
+                    item["subtotal"] = item["qty"] * item["harga"]
+                    found = True
+                    break
+
+            if not found:
+                st.session_state.keranjang.append({
+                    "departemen": dept_code,
+                    "periode": periode_sec,
+                    "nama_barang": add_nama,
+                    "satuan": add_satuan,
+                    "harga": add_harga,
+                    "qty": add_qty,
+                    "subtotal": add_harga * add_qty
+                })
+
+            # Kirim Webhook
+            if webhook_url and "http" in webhook_url:
+                payload = {
+                    "departemen": dept_code,
+                    "periode": periode_sec,
+                    "nama_barang": add_nama,
+                    "satuan": add_satuan,
+                    "harga": add_harga,
+                    "qty": add_qty,
+                    "subtotal": add_harga * add_qty
+                }
+                try:
+                    requests.post(webhook_url, json=payload, timeout=3)
+                except:
+                    pass
+        except Exception as err:
+            pass
+
+        # Bersihkan parameter & update UI
+        st.query_params.clear()
+        st.rerun()
+
     if url_sheet and "http" in url_sheet:
         try:
             csv_url = get_csv_url(url_sheet, "DataBarang")
@@ -226,10 +278,9 @@ else:
                     "harga": harga_clean
                 })
 
-            import json
             json_barang = json.dumps(barang_list)
 
-            # HTML & JAVASCRIPT DINAMIS SEARCH WITH URL BRIDGE
+            # HTML & COMPONENT PENCARIAN DINAMIS JS
             html_code = f"""
             <!DOCTYPE html>
             <html>
@@ -309,14 +360,15 @@ else:
 
                 function addToCart(nama, satuan, harga, index) {{
                     const qtyVal = document.getElementById(`qty-${{index}}`).value || 1;
-                    const url = new URL(window.parent.location.href);
-                    url.searchParams.set('add_nama', decodeURIComponent(nama));
-                    url.searchParams.set('add_satuan', satuan);
-                    url.searchParams.set('add_harga', harga);
-                    url.searchParams.set('add_qty', qtyVal);
                     
-                    // Trigger update ke Streamlit parent window
-                    window.parent.location.href = url.href;
+                    // Mengirimkan instruksi tambah via top window location safe-bypass
+                    const targetUrl = new URL(window.top.location.href);
+                    targetUrl.searchParams.set('action_add', decodeURIComponent(nama));
+                    targetUrl.searchParams.set('satuan', satuan);
+                    targetUrl.searchParams.set('harga', harga);
+                    targetUrl.searchParams.set('qty', qtyVal);
+                    
+                    window.top.location.href = targetUrl.href;
                 }}
 
                 filterBarang();
