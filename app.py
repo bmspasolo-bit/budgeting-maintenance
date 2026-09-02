@@ -1,3 +1,5 @@
+import json
+import os
 import re
 from datetime import datetime
 import pandas as pd
@@ -5,10 +7,29 @@ import requests
 import streamlit as st
 
 # ==============================================================================
-# CONFIG DATABASE PERMANEN
+# CONFIG DATABASE PERMANEN & PENYIMPANAN DATA
 # ==============================================================================
 URL_SHEET_DEFAULT = "https://docs.google.com/spreadsheets/d/1dhbkNELRxIa9HAexkpT13t2cbg3sqdRp5yBr7af9bcw/edit?usp=sharing"
 WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzfJdpAGYAD09r-q2yL4L7u2DBWein3N5wH5qI9R2QY5apPoLeKkh/exec"
+DATA_STORAGE_FILE = "pengajuan_data.json"
+
+
+def load_persistent_data():
+    if os.path.exists(DATA_STORAGE_FILE):
+        try:
+            with open(DATA_STORAGE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+def save_persistent_data(data):
+    try:
+        with open(DATA_STORAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Gagal menyimpan data lokal: {e}")
 # ==============================================================================
 
 st.set_page_config(
@@ -84,6 +105,17 @@ st.markdown(
         margin-top: 15px;
         margin-bottom: 15px;
     }
+
+    .wa-search-header {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        padding: 12px 16px;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -108,7 +140,7 @@ if "role" not in st.session_state:
 if "keranjang" not in st.session_state:
     st.session_state.keranjang = []
 if "db_pengajuan_admin" not in st.session_state:
-    st.session_state.db_pengajuan_admin = []
+    st.session_state.db_pengajuan_admin = load_persistent_data()
 
 
 def get_csv_url(url, sheet_name="DataBarang"):
@@ -133,6 +165,8 @@ if not st.session_state.logged_in:
         if password_input == ROLE_DB[role_pilihan]:
             st.session_state.logged_in = True
             st.session_state.role = role_pilihan
+            # Pastikan reload data terbaru dari storage saat login
+            st.session_state.db_pengajuan_admin = load_persistent_data()
             st.rerun()
         else:
             st.error("❌ Kata sandi salah!")
@@ -300,6 +334,9 @@ elif st.session_state.role == "Admin":
                 st.session_state.db_pengajuan_admin = (
                     other_periods + clean_updated_df.to_dict("records")
                 )
+
+            # Simpan permanen ke file JSON
+            save_persistent_data(st.session_state.db_pengajuan_admin)
 
             st.toast("✅ Perubahan database berhasil disimpan!", icon="💾")
             st.rerun()
@@ -487,19 +524,29 @@ else:
                 )
             )
 
-            # 1. PENCARIAN BARANG
-            search_query = st.text_input(
-                "🔍 Cari Nama Barang:",
-                placeholder="⚡ Ketik nama barang...",
-                key="sticky_search_input",
-            )
+            # 1. PENCARIAN BARANG DINAMIS (ALA WA WEB)
+            col_search, col_reset = st.columns([5, 1])
+            with col_search:
+                search_query = st.text_input(
+                    "🔍 Cari Barang atau Kode:",
+                    placeholder="🔍 Cari atau mulai ketik nama barang...",
+                    key="sticky_search_input",
+                    label_visibility="collapsed",
+                )
+            with col_reset:
+                if st.button("❌ Reset", use_container_width=True):
+                    st.session_state.sticky_search_input = ""
+                    st.rerun()
 
             if search_query:
-                filtered_df = df_barang[
-                    df_barang["Nama Barang"]
-                    .astype(str)
-                    .str.contains(search_query, case=False, na=False)
-                ].copy()
+                # Pencarian multi-kata fleksibel (dinamis ala WA Web search)
+                keywords = [k.strip() for k in search_query.split() if k.strip()]
+                mask = pd.Series([True] * len(df_barang))
+                for kw in keywords:
+                    mask = mask & df_barang["Nama Barang"].astype(str).str.contains(
+                        kw, case=False, na=False
+                    )
+                filtered_df = df_barang[mask].copy()
             else:
                 filtered_df = df_barang.copy()
 
@@ -507,7 +554,12 @@ else:
             filtered_df["Jumlah (Qty)"] = 1
 
             # 2. TABEL BARANG
-            st.caption(f"📊 Menampilkan **{len(filtered_df)}** barang tersedia.")
+            if search_query:
+                st.caption(
+                    f"🔍 Ditemukan **{len(filtered_df)}** barang yang cocok dengan kata kunci :blue['{search_query}']"
+                )
+            else:
+                st.caption(f"📊 Menampilkan **{len(filtered_df)}** barang tersedia.")
 
             with st.form("catalog_form"):
                 edited_df = st.data_editor(
@@ -667,9 +719,12 @@ else:
                                 except Exception:
                                     pass
 
+                        # Simpan permanen ke file JSON
+                        save_persistent_data(st.session_state.db_pengajuan_admin)
+
                         st.session_state.keranjang = []
                         st.balloons()
-                        st.success("🎉 Pengajuan berhasil dikirimkan ke Admin!")
+                        st.success("🎉 Pengajuan berhasil dikirimkan ke Admin dan tersimpan!")
                         st.rerun()
 
                 with col_sub2:
@@ -691,16 +746,30 @@ else:
             ]
 
             if submitted_dept_data:
-                df_history = pd.DataFrame(submitted_dept_data)
-                tot_submitted = df_history["subtotal"].sum()
-                st.caption(
-                    "Berikut adalah barang yang sudah terdaftar di Admin untuk"
-                    f" departemen **{dept_aktif}**:"
+                df_history_all = pd.DataFrame(submitted_dept_data)
+
+                # Filter periode di bagian atas riwayat untuk menghemat kolom tabel
+                daftar_periode_dept = ["Semua Periode"] + list(df_history_all["periode"].unique())
+                pilihan_periode_dept = st.selectbox(
+                    "📅 Filter Periode Riwayat:",
+                    options=daftar_periode_dept,
+                    key="filter_periode_dept_history"
                 )
 
+                if pilihan_periode_dept != "Semua Periode":
+                    df_history = df_history_all[df_history_all["periode"] == pilihan_periode_dept].copy()
+                else:
+                    df_history = df_history_all.copy()
+
+                tot_submitted = df_history["subtotal"].sum()
+                st.caption(
+                    f"Berikut adalah barang yang sudah terdaftar di Admin untuk departemen **{dept_aktif}**"
+                    + (f" pada periode **{pilihan_periode_dept}**:" if pilihan_periode_dept != "Semua Periode" else ":")
+                )
+
+                # Menghilangkan kolom periode dari tabel agar menghemat ruang
                 st.dataframe(
                     df_history[[
-                        "periode",
                         "nama_barang",
                         "qty",
                         "satuan",
@@ -708,7 +777,6 @@ else:
                         "subtotal",
                     ]],
                     column_config={
-                        "periode": "Periode",
                         "nama_barang": "Nama Barang",
                         "qty": "Qty",
                         "satuan": "Satuan",
@@ -736,3 +804,4 @@ else:
             st.error(f"Gagal membaca database. Error: {e}")
     else:
         st.info("👈 Silakan atur link Google Sheet terlebih dahulu.")
+
