@@ -16,7 +16,7 @@ st.set_page_config(
     page_title="E-Katalog Budgeting & Admin Portal", layout="wide"
 )
 
-# STYLING GLOBAL, FIX DARK MODE FONT, & CLEANUP UI
+# STYLING GLOBAL & FIX DARK MODE FONT
 st.markdown(
     """
     <style>
@@ -43,12 +43,6 @@ st.markdown(
         background-color: transparent !important;
     }
 
-    /* Sembunyikan Tulisan 'keyboard double arrow right' Pada Tabel */
-    [aria-label*="keyboard double arrow right"],
-    [data-testid="stDataEditor"] span:contains("keyboard double arrow right") {
-        display: none !important;
-    }
-
     /* Styling Input Text & Password */
     div[data-baseweb="input"] > div, input {
         background-color: #1e293b !important;
@@ -57,20 +51,12 @@ st.markdown(
         border-radius: 8px !important;
     }
 
-    /* FIX ICON EYE PASSWORDS */
+    /* Fix Icon Eye Password */
     button[aria-label*="password"], 
     button[aria-label*="Password"],
     button[aria-label*="Show"],
     button[aria-label*="Hide"] {
         color: #94a3b8 !important;
-    }
-
-    button[aria-label*="password"] *, 
-    button[aria-label*="Password"] *,
-    button[aria-label*="Show"] *,
-    button[aria-label*="Hide"] * {
-        font-family: "Material Symbols Rounded", "Material Icons", sans-serif !important;
-        font-size: 1.2rem !important;
     }
 
     .stButton>button { 
@@ -153,7 +139,7 @@ if not st.session_state.logged_in:
             st.error("❌ Kata sandi salah!")
 
 # ==========================================
-# 2. PANEL ADMIN (VERIFIKASI & EDIT & CETAK)
+# 2. PANEL ADMIN
 # ==========================================
 elif st.session_state.role == "Admin":
     periode_sekarang = datetime.now().strftime("%B %Y")
@@ -332,7 +318,7 @@ elif st.session_state.role == "Admin":
             unsafe_allow_html=True,
         )
 
-        # CETAK DOKUMEN PROPOSAL & PREVIEW
+        # CETAK DOKUMEN PROPOSAL
         st.markdown("---")
         st.subheader("🖨️ Cetak Dokumen Proposal Anggaran")
 
@@ -356,50 +342,24 @@ elif st.session_state.role == "Admin":
                 grand_total += dept_subtotal
 
                 rekap_rows_html += (
-                    '<tr><td style="padding: 8px; border: 1px solid #000;">Departemen'
-                    f' {dept_name}</td><td style="padding: 8px; border: 1px solid'
-                    ' #000; text-align: right; font-weight: bold;">Rp'
-                    f' {dept_subtotal:,.0f}</td></tr>'
+                    "<tr><td style='padding: 8px; border: 1px solid"
+                    " #000;'>Departemen "
+                    + str(dept_name)
+                    + "</td><td style='padding: 8px; border: 1px solid #000;"
+                    " text-align: right; font-weight: bold;'>Rp "
+                    + f"{dept_subtotal:,.0f}"
+                    + "</td></tr>"
                 )
 
                 rows_html = ""
                 for idx, r in enumerate(dept_data.itertuples(), start=1):
                     sub = float(r.harga) * float(r.qty)
                     rows_html += (
-                        '<tr><td style="text-align:center; border: 1px solid #000;'
-                        f' padding: 6px;">{idx}</td><td style="border: 1px solid #000;'
-                        f' padding: 6px;">{r.nama_barang}</td><td'
-                        ' style="text-align:center; border: 1px solid #000; padding:'
-                        f' 6px;">{r.qty}</td><td style="text-align:center; border: 1px'
-                        f' solid #000; padding: 6px;">{r.satuan}</td><td'
-                        ' style="text-align:right; border: 1px solid #000; padding:'
-                        f' 6px;">Rp {r.harga:,.0f}</td><td style="text-align:right;'
-                        f' border: 1px solid #000; padding: 6px;">Rp {sub:,.0f}</td></tr>'
-                    )
-
-                tables_html += (
-                    '<h3 style="margin-top: 25px; margin-bottom: 8px; color: #000000;'
-                    f' font-size: 16px;">🏢 Departemen: {dept_name}</h3><table'
-                    ' style="width: 100%; border-collapse: collapse; margin-bottom:'
-                    ' 15px;"><thead><tr style="background-color: #f2f2f2; color:'
-                    ' #000;"><th style="width: 5%; border: 1px solid #000; padding:'
-                    ' 6px;">No</th><th style="border: 1px solid #000; padding: 6px;'
-                    ' text-align: left;">Nama Barang</th><th style="width: 10%; border:'
-                    ' 1px solid #000; padding: 6px;">Qty</th><th style="width: 10%;'
-                    ' border: 1px solid #000; padding: 6px;">Satuan</th><th'
-                    ' style="width: 20%; border: 1px solid #000; padding: 6px;'
-                    ' text-align: right;">Harga Unit</th><th style="width: 20%;'
-                    ' border: 1px solid #000; padding: 6px; text-align:'
-                    ' right;">Subtotal</th></tr></thead><tbody>'
-                    + rows_html
-                    + '<tr style="font-weight: bold; background-color: #e6e6e6; color:'
-                      ' #000;"><td colspan="5" style="text-align:right; border: 1px'
-                      ' solid #000; padding: 6px;">SUBTOTAL'
-                    f' {dept_name.upper()}:</td><td style="text-align:right; border: 1px'
-                    f' solid #000; padding: 6px;">Rp {dept_subtotal:,.0f}</td></tr></tbody></table>'
-                )
-
-            css_style = (
-                '<style>* { color: #000000 !important; font-family: Arial,'
-                ' sans-serif; } body { background-color: #ffffff !important;'
-                ' padding: 25px;
+                        "<tr><td style='text-align:center; border: 1px solid #000;"
+                        f" padding: 6px;'>{idx}</td><td style='border: 1px solid"
+                        f" #000; padding: 6px;'>{r.nama_barang}</td><td"
+                        " style='text-align:center; border: 1px solid #000;"
+                        f" padding: 6px;'>{r.qty}</td><td"
+                        " style='text-align:center; border: 1px solid #000;"
+                        f" padding: 6px;'>{r.satuan}</td><td"
+                        " style='
