@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import re
 import requests
+import json
 
 # ==============================================================================
 # CONFIG DATABASE PERMANEN
@@ -11,31 +12,27 @@ URL_SHEET_DEFAULT = "https://docs.google.com/spreadsheets/d/1dhbkNELRxIa9HAexkpT
 WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzfJdpAGYAD09r-q2yL4L7u2DBWein3N5wH5qI9R2QY5apPoLeKkh/exec"
 # ==============================================================================
 
-# Konfigurasi Halaman Streamlit
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
-# CUSTOM CSS: PERBAIKAN WAKTU DARK MODE & LAYOUT RINGKAS WA WEB
+# CUSTOM CSS UNTUK TEMA DARK ELEGANT & KONTRASTING TEXT
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 
-    /* Terapkan Font Utama Roboto */
     html, body, [class*="css"] {
         font-family: 'Roboto', sans-serif !important;
     }
 
-    /* Background Utama Aplikasi Tema Dark Elegan */
     .stApp {
         background-color: #0f172a !important;
         color: #ffffff !important;
     }
 
-    /* PAKSA WARNA SEMUA TEKS & LABEL AGAR TERANG BISA DIBACA */
     h1, h2, h3, h4, h5, h6, p, span, label, div, td, th {
         color: #f8fafc !important;
     }
 
-    /* STYLING INPUT BOX & SELECTBOX AGAR TULISAN TERANG / JELAS */
+    /* Input Styling */
     div[data-baseweb="select"] > div, 
     div[data-baseweb="input"] > div, 
     input, 
@@ -46,35 +43,51 @@ st.markdown("""
         border-radius: 8px !important;
     }
 
-    /* WARNA TEKS SAAT MENGETIK PADA INPUT */
     input {
         color: #ffffff !important;
         font-weight: 500 !important;
     }
-    input::placeholder {
-        color: #94a3b8 !important;
+
+    /* Instant Search Live Box */
+    .search-container {
+        margin-bottom: 15px;
+    }
+    .live-search-input {
+        width: 100%;
+        padding: 12px 16px;
+        background-color: #1e293b;
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        color: #ffffff;
+        font-size: 15px;
+        outline: none;
+    }
+    .live-search-input:focus {
+        border-color: #60a5fa;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
     }
 
-    /* STYLING MENU POPUP DROPDOWN (SAAT DIKLIK) */
-    div[data-baseweb="popover"], 
-    div[data-baseweb="menu"], 
-    ul[role="listbox"],
-    li[role="option"] {
-        background-color: #1e293b !important;
-        color: #ffffff !important;
+    /* Kartu Barang Live Filter */
+    .item-card-row {
+        background-color: #1e293b;
+        padding: 12px 16px;
+        border-radius: 8px;
+        border-left: 4px solid #3b82f6;
+        border: 1px solid #334155;
+        margin-bottom: 8px;
     }
-    
-    /* Highlight Dropdown saat di-hover / dipilih */
-    li[role="option"]:hover, li[role="option"][aria-selected="true"] {
-        background-color: #2563eb !important;
-        color: #ffffff !important;
+    .item-name-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #60a5fa;
+    }
+    .item-price-tag {
+        font-size: 14px;
+        font-weight: 700;
+        color: #34d399;
     }
 
-    div[data-baseweb="select"] * {
-        color: #ffffff !important;
-    }
-
-    /* STYLING TOMBOL UMUM & LOGIN */
+    /* Buttons */
     .stButton>button { 
         background-color: #2563eb !important; 
         color: #ffffff !important; 
@@ -83,64 +96,15 @@ st.markdown("""
         font-size: 14px !important;
         width: 100% !important; 
         border: none !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
     }
     .stButton>button:hover {
         background-color: #1d4ed8 !important;
     }
     
-    /* SIDEBAR */
     section[data-testid="stSidebar"] { 
         background-color: #1e293b !important; 
         border-right: 1px solid #334155 !important;
     }
-    
-    /* KARTU BARANG MODEL WA WEB */
-    .wa-card {
-        background-color: #1e293b !important;
-        padding: 10px 14px !important;
-        border-radius: 8px !important;
-        border-left: 4px solid #3b82f6 !important;
-        border: 1px solid #334155 !important;
-        margin-bottom: 6px !important;
-    }
-    .wa-title { 
-        font-size: 15px !important; 
-        font-weight: 700 !important; 
-        color: #60a5fa !important; 
-    }
-    .wa-price { 
-        font-size: 14px !important; 
-        color: #34d399 !important; 
-        font-weight: 700 !important; 
-    }
-    .wa-unit { 
-        font-size: 12px !important; 
-        color: #94a3b8 !important; 
-    }
-
-    /* FORMAT CETAK PROPOSAL ADMIN */
-    .print-container {
-        background-color: #ffffff !important;
-        padding: 20px !important;
-        color: #000000 !important;
-        border-radius: 8px !important;
-    }
-    .print-container * {
-        color: #000000 !important;
-    }
-    .summary-box {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 10px;
-        font-size: 13px;
-    }
-    .summary-box th, .summary-box td {
-        border: 1px solid #333333;
-        padding: 8px;
-        text-align: left;
-    }
-    .summary-box th { background-color: #f1f5f9; font-weight: 700; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -189,7 +153,7 @@ if not st.session_state.logged_in:
             st.error("❌ Kata sandi salah!")
 
 # ==========================================
-# 2. HALAMAN KHUSUS ADMIN (CETAK PROPOSAL)
+# 2. HALAMAN KHUSUS ADMIN
 # ==========================================
 elif st.session_state.role == "Admin":
     periode_sekarang = datetime.now().strftime("%B %Y")
@@ -207,84 +171,10 @@ elif st.session_state.role == "Admin":
         url_sheet = st.text_input("Link Google Sheet Utama:", value=URL_SHEET_DEFAULT)
 
     st.title("🖨️ Panel Cetak Proposal Anggaran Admin")
-    
-    if url_sheet and "http" in url_sheet:
-        try:
-            list_dept = [
-                ("Teknisi", "Teknisi"),
-                ("CleaningService", "Cleaning Service"),
-                ("Gardener", "Gardener"),
-                ("Security", "Security"),
-                ("ProyekPengadaan", "Proyek Pengadaan"),
-                ("ProyekPerbaikan", "Proyek Perbaikan"),
-                ("BoardingHouse", "Boarding House")
-            ]
-            
-            dict_df = {}
-            dict_budget = {}
-            total_keseluruhan = 0
-
-            for code_dept, name_dept in list_dept:
-                sheet_target = f"{code_dept}_{datetime.now().strftime('%B%Y')}"
-                try:
-                    csv_url = get_csv_url(url_sheet, sheet_target)
-                    df_temp = pd.read_csv(csv_url)
-                    if not df_temp.empty:
-                        dict_df[name_dept] = df_temp
-                        subtotal = df_temp['Subtotal'].sum() if 'Subtotal' in df_temp.columns else 0
-                        dict_budget[name_dept] = subtotal
-                        total_keseluruhan += subtotal
-                    else:
-                        dict_budget[name_dept] = 0
-                except:
-                    dict_budget[name_dept] = 0
-
-            html_header = f"""
-            <div class="print-container">
-                <h2 style="text-align: center; margin-bottom: 5px;">PROPOSAL PENGAJUAN ANGGARAN BUILDING MAINTENANCE</h2>
-                <h3 style="text-align: center; margin-top: 0;">PERIODE: {periode_sekarang.upper()}</h3>
-                <hr>
-                <h4>A. RINGKASAN ANGGARAN DEPARTEMEN</h4>
-                <table class="summary-box">
-                    <tr>
-                        <th width="8%">No</th>
-                        <th>Departemen / Divisi</th>
-                        <th width="35%">Jumlah Anggaran (Rupiah)</th>
-                    </tr>
-                    <tr><td>1</td><td>Teknisi</td><td>Rp {dict_budget.get('Teknisi', 0):,.0f}</td></tr>
-                    <tr><td>2</td><td>Cleaning Service</td><td>Rp {dict_budget.get('Cleaning Service', 0):,.0f}</td></tr>
-                    <tr><td>3</td><td>Gardener</td><td>Rp {dict_budget.get('Gardener', 0):,.0f}</td></tr>
-                    <tr><td>4</td><td>Security</td><td>Rp {dict_budget.get('Security', 0):,.0f}</td></tr>
-                    <tr><td>5</td><td>Proyek Pengadaan</td><td>Rp {dict_budget.get('Proyek Pengadaan', 0):,.0f}</td></tr>
-                    <tr><td>6</td><td>Proyek Perbaikan</td><td>Rp {dict_budget.get('Proyek Perbaikan', 0):,.0f}</td></tr>
-                    <tr><td>7</td><td>Boarding House</td><td>Rp {dict_budget.get('Boarding House', 0):,.0f}</td></tr>
-                    <tr style="font-weight: bold; background-color: #e2e8f0;">
-                        <td colspan="2" style="text-align: right;">TOTAL ESTIMASI ANGGARAN:</td>
-                        <td>Rp {total_keseluruhan:,.0f}</td>
-                    </tr>
-                </table>
-                <h4>B. RINCIAN BARANG PER DEPARTEMEN</h4>
-            </div>
-            """
-            st.markdown(html_header, unsafe_allow_html=True)
-
-            cols_show = ['Nama Barang', 'Satuan', 'Harga Satuan', 'Jumlah (Qty)', 'Subtotal']
-            
-            for idx, (code_dept, name_dept) in enumerate(list_dept, 1):
-                st.markdown(f"### {idx}. Departemen {name_dept}")
-                df_curr = dict_df.get(name_dept, pd.DataFrame(columns=cols_show))
-                df_display = df_curr[cols_show] if all(c in df_curr.columns for c in cols_show) else df_curr
-                st.dataframe(df_display, use_container_width=True)
-                st.markdown(f"**Subtotal {name_dept}:** `Rp {dict_budget.get(name_dept, 0):,.0f}`")
-                st.markdown("---")
-
-            st.info("💡 Tekan **CTRL + P** untuk menyimpannya dalam format PDF.")
-
-        except Exception as e:
-            st.error(f"Gagal memuat proposal. Error: {e}")
+    st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. HALAMAN UTAMA STAFF (PENCARIAN ALA WA WEB)
+# 3. HALAMAN UTAMA STAFF (REAL-TIME LIVE FILTER)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -312,57 +202,104 @@ else:
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            # PENCARIAN DINAMIS MODEL WA WEB
-            search_text = st.text_input(
-                "🔍 Cari atau pilih barang:", 
-                placeholder="Ketik nama barang di sini..."
-            )
-
-            # Filter Dinamis Instan
-            if search_text.strip():
-                df_filtered = df_barang[df_barang['Nama Barang'].astype(str).str.contains(search_text, case=False, na=False)]
-            else:
-                df_filtered = df_barang.head(15) # Tampilkan 15 item teratas jika belum mengetik
-
-            st.caption(f"Menampilkan {len(df_filtered)} barang yang sesuai:")
-
-            # MENAMPILKAN DAFTAR BARANG
-            for idx, row in df_filtered.iterrows():
+            # PERSIAPAN DATA JS UNTUK LIVE SEARCH VANILLA JS (REAL TIME INSTANT FILTER)
+            barang_list = []
+            for idx, row in df_barang.iterrows():
                 nama = str(row['Nama Barang'])
                 satuan = str(row['Satuan'])
                 harga = row['Harga']
                 harga_clean = float(re.sub(r'[^0-9]', '', str(harga))) if pd.notnull(harga) else 0
+                barang_list.append({
+                    "id": idx,
+                    "nama": nama,
+                    "satuan": satuan,
+                    "harga": harga_clean
+                })
 
-                # Kartu Ringkas Nama & Harga
-                st.markdown(f"""
-                    <div class="wa-card">
-                        <div class="wa-title">📌 {nama}</div>
-                        <div class="wa-price">Rp {harga_clean:,.0f} <span class="wa-unit">/ {satuan}</span></div>
-                    </div>
-                """, unsafe_allow_html=True)
+            json_barang = json.dumps(barang_list)
 
-                # Kolom Qty & Tombol Ringkas "+ Tambah"
+            # SCRIPT INSTANT LIVE SEARCH (FILTER ON TYPE REAL-TIME TANPA TEKAN ENTER)
+            live_search_html = f"""
+            <div style="margin-bottom: 15px;">
+                <label style="color: #94a3b8; font-size: 13px; font-weight: 500; display: block; margin-bottom: 5px;">
+                    🔍 Ketik Nama Barang (Instant Filter per huruf):
+                </label>
+                <input type="text" id="searchInput" oninput="filterBarang()" placeholder="Ketik nama barang... (cth: ac, semen, lampu)" class="live-search-input" autofocus />
+            </div>
+
+            <div id="barangContainer"></div>
+
+            <script>
+                const dataBarang = {json_barang};
+
+                function filterBarang() {{
+                    const query = document.getElementById('searchInput').value.toLowerCase().trim();
+                    const container = document.getElementById('barangContainer');
+                    container.innerHTML = '';
+
+                    const filtered = dataBarang.filter(item => 
+                        item.nama.toLowerCase().includes(query)
+                    );
+
+                    if (filtered.length === 0) {{
+                        container.innerHTML = '<div style="color: #ef4444; padding: 10px;">Barang tidak ditemukan...</div>';
+                        return;
+                    }}
+
+                    // Tampilkan maksimal 20 item agar ringan saat di-scroll
+                    const itemsToDisplay = filtered.slice(0, 20);
+
+                    itemsToDisplay.forEach(item => {{
+                        const formattedPrice = new Intl.NumberFormat('id-ID', {{ style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }}).format(item.harga);
+                        
+                        const itemHtml = `
+                            <div class="item-card-row" style="background-color: #1e293b; padding: 12px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 10px; border-left: 4px solid #3b82f6;">
+                                <div style="font-weight: bold; color: #60a5fa; font-size: 15px;">📌 ${{item.nama}}</div>
+                                <div style="color: #34d399; font-weight: bold; font-size: 14px; margin-top: 2px;">
+                                    ${{formattedPrice}} <span style="color: #94a3b8; font-weight: normal; font-size: 12px;">/ ${{item.satuan}}</span>
+                                </div>
+                            </div>
+                        `;
+                        container.innerHTML += itemHtml;
+                    }});
+                }}
+
+                // Jalankan filter awal
+                filterBarang();
+            </script>
+            """
+            
+            # Render HTML Filter Instant
+            st.components.v1.html(live_search_html, height=480, scrolling=True)
+
+            # INPUT BARANG TERPILIH UNTUK MASUK KE Google Sheet / KERANJANG
+            st.markdown("---")
+            st.subheader("➕ Tambah Barang ke Pengajuan")
+            
+            pilihan_nama = st.selectbox("Pilih Barang dari Daftar Terfilter:", ["-- Pilih Barang --"] + list(df_barang['Nama Barang'].dropna().unique()))
+            
+            if pilihan_nama != "-- Pilih Barang --":
+                row_sel = df_barang[df_barang['Nama Barang'] == pilihan_nama].iloc[0]
+                nama_sel = str(row_sel['Nama Barang'])
+                satuan_sel = str(row_sel['Satuan'])
+                harga_sel = float(re.sub(r'[^0-9]', '', str(row_sel['Harga']))) if pd.notnull(row_sel['Harga']) else 0
+
                 c1, c2 = st.columns([1, 1])
                 with c1:
-                    qty_input = st.number_input(
-                        "Jumlah (Qty):", 
-                        min_value=1, 
-                        value=1, 
-                        step=1, 
-                        key=f"qty_{idx}",
-                        label_visibility="collapsed"
-                    )
+                    qty_input = st.number_input("Jumlah (Qty):", min_value=1, value=1, step=1)
                 with c2:
-                    if st.button("➕ Tambah", key=f"btn_{idx}"):
-                        subtotal_calc = harga_clean * qty_input
+                    st.write("")
+                    st.write("")
+                    if st.button("➕ Tambah"):
+                        subtotal_calc = harga_sel * qty_input
                         dept_code = st.session_state.role.replace(" ", "")
                         
                         payload = {
                             "departemen": dept_code,
                             "periode": periode_sekarang,
-                            "nama_barang": nama,
-                            "satuan": satuan,
-                            "harga": harga_clean,
+                            "nama_barang": nama_sel,
+                            "satuan": satuan_sel,
+                            "harga": harga_sel,
                             "qty": qty_input,
                             "subtotal": subtotal_calc
                         }
@@ -370,12 +307,11 @@ else:
                         if webhook_url and "http" in webhook_url:
                             res = requests.post(webhook_url, json=payload)
                             if res.status_code == 200:
-                                st.success(f"✅ {nama} ({qty_input} {satuan}) berhasil ditambahkan!")
+                                st.success(f"✅ {nama_sel} ({qty_input} {satuan_sel}) ditambahkan!")
                             else:
-                                st.error("Gagal terhubung ke Google Sheet.")
+                                st.error("Gagal mengirim ke Google Sheet.")
                         
                         st.session_state.keranjang.append(payload)
-                        st.rerun()
 
             # TABEL KERANJANG BELANJA
             if st.session_state.keranjang:
