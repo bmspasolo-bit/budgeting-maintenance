@@ -723,7 +723,7 @@ else:
                             "🔢 Qty", min_value=1, step=1, required=True
                         ),
                         "Keterangan": st.column_config.TextColumn(
-                            "📝 Keterangan / Keperluan", placeholder="Contoh: Perbaikan AC Ruang 102"
+                            "📝 Keterangan / Keperluan"
                         ),
                     },
                     hide_index=True,
