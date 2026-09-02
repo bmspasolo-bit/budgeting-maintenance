@@ -15,7 +15,7 @@ WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzf
 
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
-# STYLING GLOBAL & ROBOTO FONT
+# STYLING GLOBAL (Mata Password & UI disesuaikan agar tidak hilang)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
@@ -33,11 +33,20 @@ st.markdown("""
         color: #f8fafc !important;
     }
 
-    div[data-baseweb="input"] > div, input {
+    /* Input background & border */
+    div[data-baseweb="input"] {
         background-color: #1e293b !important;
-        color: #ffffff !important;
         border: 1px solid #3b82f6 !important;
         border-radius: 8px !important;
+    }
+
+    input {
+        color: #ffffff !important;
+    }
+
+    /* Menjaga icon mata / action button pada password input tetap terlihat */
+    div[data-baseweb="input"] button {
+        color: #94a3b8 !important;
     }
 
     .stButton>button { 
@@ -87,7 +96,6 @@ if "role" not in st.session_state:
     st.session_state.role = ""
 if "keranjang" not in st.session_state:
     st.session_state.keranjang = []
-# Database Global Pengajuan yang Masuk ke Admin
 if "db_pengajuan_admin" not in st.session_state:
     st.session_state.db_pengajuan_admin = []
 
@@ -106,9 +114,9 @@ if not st.session_state.logged_in:
     st.write("Silakan pilih departemen dan masukkan password:")
     
     role_pilihan = st.selectbox("Pilih Akses / Departemen:", list(ROLE_DB.keys()))
-    password_input = st.text_input("Kata Sandi (Password):", type="password")
+    password_input = st.text_input("Kata Sandi (Password):", type="password", key="login_pass_input")
     
-    if st.button("Masuk ke Aplikasi"):
+    if st.button("Masuk ke Aplikasi", type="primary"):
         if password_input == ROLE_DB[role_pilihan]:
             st.session_state.logged_in = True
             st.session_state.role = role_pilihan
@@ -132,11 +140,10 @@ elif st.session_state.role == "Admin":
             
         st.markdown("---")
         st.header("⚙️ Database")
-        url_sheet = st.text_input("Link Google Sheet Utama:", value=URL_SHEET_DEFAULT)
+        url_sheet = st.text_input("Link Google Sheet Utama:", value=URL_SHEET_DEFAULT, key="admin_sheet_url")
 
     st.title("🛡️ Admin Portal — Verifikasi & Cetak Proposal")
     
-    # Menampilkan pengajuan dari seluruh departemen
     if st.session_state.db_pengajuan_admin:
         df_admin = pd.DataFrame(st.session_state.db_pengajuan_admin)
         
@@ -144,11 +151,11 @@ elif st.session_state.role == "Admin":
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             daftar_periode = list(df_admin['periode'].unique())
-            pilihan_periode = st.selectbox("📅 Pilih Periode Anggaran:", options=daftar_periode)
+            pilihan_periode = st.selectbox("📅 Pilih Periode Anggaran:", options=daftar_periode, key="admin_sel_periode")
             
         with col_f2:
             daftar_dept = ["Semua Departemen"] + list(df_admin['departemen'].unique())
-            pilihan_dept = st.selectbox("🏢 Filter Departemen:", options=daftar_dept)
+            pilihan_dept = st.selectbox("🏢 Filter Departemen:", options=daftar_dept, key="admin_sel_dept")
 
         filtered_admin_df = df_admin[df_admin['periode'] == pilihan_periode].copy()
         if pilihan_dept != "Semua Departemen":
@@ -202,12 +209,11 @@ elif st.session_state.role == "Admin":
             </div>
         """, unsafe_allow_html=True)
 
-        # 3. CETAK DOKUMEN PROPOSAL (BROWSER NATIVE HASIL UPDATE)
+        # 3. CETAK DOKUMEN PROPOSAL
         st.markdown("---")
         st.subheader("🖨️ Cetak Dokumen Proposal Anggaran")
         
-        if st.button("🖨️ Buka Preview & Cetak PDF", type="primary"):
-            # A. Buat Tabel Ringkasan per Departemen
+        if st.button("🖨️ Buka Preview & Cetak PDF", type="primary", key="btn_print_pdf"):
             summary_dept_df = edited_admin_df.groupby('departemen')['subtotal'].sum().reset_index()
             
             summary_html = ""
@@ -220,7 +226,6 @@ elif st.session_state.role == "Admin":
                 </tr>
                 """
 
-            # B. Buat Rincian Barang Per Departemen
             detail_tables_html = ""
             grouped_dept = edited_admin_df.groupby('departemen')
             
@@ -262,7 +267,6 @@ elif st.session_state.role == "Admin":
                 </table>
                 """
 
-            # C. Template HTML Lengkap untuk Cetak PDF
             tgl_cetak = datetime.now().strftime("%d %B %Y")
             html_print = f"""
             <!DOCTYPE html>
@@ -286,7 +290,6 @@ elif st.session_state.role == "Admin":
                 <h2>PROPOSAL PENGAJUAN ANGGARAN BUDGETING</h2>
                 <p class="sub">Periode: <b>{pilihan_periode}</b> | Filter: <b>{pilihan_dept}</b></p>
                 
-                <!-- 1. RINGKASAN EKSEKUTIF UNTUK PIMPINAN -->
                 <div class="summary-box">
                     <div class="summary-title">📊 RINGKASAN KEBUTUHAN BIAYA PER DEPARTEMEN</div>
                     <table>
@@ -310,10 +313,8 @@ elif st.session_state.role == "Admin":
                 <hr style="border: 1px dashed #666; margin-top: 30px; margin-bottom: 10px;">
                 <h3 style="text-align: center; margin-bottom: 15px;">RINCIAN ITEM PER DEPARTEMEN</h3>
 
-                <!-- 2. DETAIL TABLE BARANG PER DEPARTEMEN -->
                 {detail_tables_html}
 
-                <!-- 3. GRAND TOTAL FOOTER -->
                 <br>
                 <table>
                     <tr class="total-row" style="font-size: 13px;">
@@ -322,7 +323,6 @@ elif st.session_state.role == "Admin":
                     </tr>
                 </table>
 
-                <!-- 4. KOLOM TANDA TANGAN -->
                 <table class="signature-section">
                     <tr>
                         <td style="width: 50%;"></td>
@@ -359,7 +359,7 @@ else:
         st.header(f"👤 {st.session_state.role}")
         st.write(f"📅 Periode: **{datetime.now().strftime('%B %Y')}**")
         
-        if st.button("Keluar (Logout)"):
+        if st.button("Keluar (Logout)", key="btn_logout_staff"):
             st.session_state.logged_in = False
             st.session_state.role = ""
             st.session_state.keranjang = []
@@ -367,8 +367,8 @@ else:
             
         st.markdown("---")
         st.header("⚙️ Database")
-        url_sheet = st.text_input("Link Google Sheet Utama:", value=URL_SHEET_DEFAULT)
-        webhook_url = st.text_input("URL Web App Google Script:", value=WEBHOOK_URL_DEFAULT)
+        url_sheet = st.text_input("Link Google Sheet Utama:", value=URL_SHEET_DEFAULT, key="staff_sheet_url")
+        webhook_url = st.text_input("URL Web App Google Script:", value=WEBHOOK_URL_DEFAULT, key="staff_webhook_url")
         st.session_state.webhook_url = webhook_url
 
     st.title(f"📦 Katalog Barang — {st.session_state.role}")
@@ -383,11 +383,11 @@ else:
                 lambda x: float(re.sub(r'[^0-9]', '', str(x))) if pd.notnull(x) else 0.0
             )
 
-            # 1. PENCARIAN STATIS / STICKY
+            # PENCARIAN DENGAN UNIQUE KEY (Mencegah Keyboard Double Error)
             search_query = st.text_input(
                 "🔍 Cari Nama Barang:", 
-                placeholder="⚡ Ketik nama barang... (Filter otomatis & instan)",
-                key="sticky_search_input"
+                placeholder="⚡ Ketik nama barang...",
+                key="catalog_search_box"
             )
 
             if search_query:
@@ -398,7 +398,6 @@ else:
             filtered_df.insert(0, 'Pilih', False)
             filtered_df['Jumlah (Qty)'] = 1
 
-            # 2. TABEL BARANG MODERN
             st.caption(f"📊 Menampilkan **{len(filtered_df)}** barang tersedia.")
             
             with st.form("catalog_form"):
@@ -414,12 +413,11 @@ else:
                     hide_index=True,
                     use_container_width=True,
                     height=360,
-                    key="catalog_editor"
+                    key="catalog_editor_widget"
                 )
 
                 submit_button = st.form_submit_button("➕ Masukkan Barang Terpilih ke Keranjang", type="primary", use_container_width=True)
 
-            # 3. LOGIKA TAMBAH KE KERANJANG LOKAL
             if submit_button:
                 items_to_add = edited_df[edited_df['Pilih'] == True]
                 
@@ -458,9 +456,6 @@ else:
                 else:
                     st.warning("⚠️ Silakan centang minimal satu barang pada kolom 'Pilih' terlebih dahulu.")
 
-            # ==========================================
-            # TABEL KERANJANG BELANJA & SUBMIT ADMIN
-            # ==========================================
             st.markdown("---")
             st.subheader("🛒 Isi Keranjang Belanja")
 
@@ -512,16 +507,13 @@ else:
                     </div>
                 """, unsafe_allow_html=True)
 
-                # TOMBOL SUBMIT KE ADMIN DAN WEBHOOK
                 col_sub1, col_sub2 = st.columns(2)
                 
                 with col_sub1:
-                    if st.button("🚀 Submit Pengajuan ke Admin", type="primary"):
-                        # Masukkan ke Database Admin
+                    if st.button("🚀 Submit Pengajuan ke Admin", type="primary", key="btn_submit_to_admin"):
                         for item in st.session_state.keranjang:
                             st.session_state.db_pengajuan_admin.append(item)
                             
-                            # Kirim ke Webhook jika URL tersedia
                             if webhook_url and "http" in webhook_url:
                                 try:
                                     requests.post(webhook_url, json=item, timeout=3)
