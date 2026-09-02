@@ -14,12 +14,12 @@ WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzf
 
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
-# CUSTOM CSS UNTUK TEMA DARK ELEGANT & KONTRASTING TEXT
+# STYLING GLOBAL & ROBOTO FONT
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 
-    html, body, [class*="css"] {
+    html, body, [class*="css"], div, span, input, button {
         font-family: 'Roboto', sans-serif !important;
     }
 
@@ -32,7 +32,6 @@ st.markdown("""
         color: #f8fafc !important;
     }
 
-    /* Input Styling */
     div[data-baseweb="select"] > div, 
     div[data-baseweb="input"] > div, 
     input, 
@@ -48,46 +47,6 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* Instant Search Live Box */
-    .search-container {
-        margin-bottom: 15px;
-    }
-    .live-search-input {
-        width: 100%;
-        padding: 12px 16px;
-        background-color: #1e293b;
-        border: 1px solid #3b82f6;
-        border-radius: 8px;
-        color: #ffffff;
-        font-size: 15px;
-        outline: none;
-    }
-    .live-search-input:focus {
-        border-color: #60a5fa;
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
-    }
-
-    /* Kartu Barang Live Filter */
-    .item-card-row {
-        background-color: #1e293b;
-        padding: 12px 16px;
-        border-radius: 8px;
-        border-left: 4px solid #3b82f6;
-        border: 1px solid #334155;
-        margin-bottom: 8px;
-    }
-    .item-name-title {
-        font-size: 15px;
-        font-weight: 700;
-        color: #60a5fa;
-    }
-    .item-price-tag {
-        font-size: 14px;
-        font-weight: 700;
-        color: #34d399;
-    }
-
-    /* Buttons */
     .stButton>button { 
         background-color: #2563eb !important; 
         color: #ffffff !important; 
@@ -174,7 +133,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. HALAMAN UTAMA STAFF (REAL-TIME LIVE FILTER)
+# 3. HALAMAN UTAMA STAFF (LIVE SEARCH + ROBOTO + INSTANT CLICK ACTION)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -202,7 +161,7 @@ else:
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            # PERSIAPAN DATA JS UNTUK LIVE SEARCH VANILLA JS (REAL TIME INSTANT FILTER)
+            # PERSIAPAN DATA BARANG
             barang_list = []
             for idx, row in df_barang.iterrows():
                 nama = str(row['Nama Barang'])
@@ -217,20 +176,126 @@ else:
                 })
 
             json_barang = json.dumps(barang_list)
+            dept_code = st.session_state.role.replace(" ", "")
 
-            # SCRIPT INSTANT LIVE SEARCH (FILTER ON TYPE REAL-TIME TANPA TEKAN ENTER)
+            # HTML & JAVASCRIPT INSTANT SEARCH ALA WA WEB (FONT ROBOTO + INLINE QTY & TAMBAH)
             live_search_html = f"""
-            <div style="margin-bottom: 15px;">
-                <label style="color: #94a3b8; font-size: 13px; font-weight: 500; display: block; margin-bottom: 5px;">
-                    🔍 Ketik Nama Barang (Instant Filter per huruf):
-                </label>
-                <input type="text" id="searchInput" oninput="filterBarang()" placeholder="Ketik nama barang... (cth: ac, semen, lampu)" class="live-search-input" autofocus />
-            </div>
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+            <style>
+                * {{
+                    font-family: 'Roboto', sans-serif !important;
+                    box-sizing: border-box;
+                }}
+                body {{
+                    background-color: #0f172a;
+                    color: #ffffff;
+                    margin: 0;
+                    padding: 0;
+                }}
+                .search-box {{
+                    width: 100%;
+                    padding: 12px 16px;
+                    background-color: #1e293b;
+                    border: 1px solid #3b82f6;
+                    border-radius: 8px;
+                    color: #ffffff;
+                    font-size: 15px;
+                    outline: none;
+                    margin-bottom: 12px;
+                }}
+                .search-box::placeholder {{
+                    color: #94a3b8;
+                }}
+                .item-card {{
+                    background-color: #1e293b;
+                    border: 1px solid #334155;
+                    border-left: 4px solid #3b82f6;
+                    border-radius: 8px;
+                    padding: 12px;
+                    margin-bottom: 8px;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                }}
+                .item-card:hover {{
+                    background-color: #334155;
+                }}
+                .item-title {{
+                    font-size: 15px;
+                    font-weight: 700;
+                    color: #60a5fa;
+                }}
+                .item-price {{
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: #34d399;
+                    margin-top: 2px;
+                }}
+                .item-unit {{
+                    color: #94a3b8;
+                    font-weight: normal;
+                    font-size: 12px;
+                }}
+                .action-panel {{
+                    display: none;
+                    margin-top: 10px;
+                    padding-top: 10px;
+                    border-top: 1px dashed #475569;
+                }}
+                .qty-input {{
+                    width: 80px;
+                    padding: 8px;
+                    background-color: #0f172a;
+                    border: 1px solid #475569;
+                    color: #ffffff;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    text-align: center;
+                }}
+                .add-btn {{
+                    background-color: #2563eb;
+                    color: #ffffff;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    margin-left: 8px;
+                }}
+                .add-btn:hover {{
+                    background-color: #1d4ed8;
+                }}
+                .status-msg {{
+                    font-size: 12px;
+                    color: #34d399;
+                    margin-top: 6px;
+                    display: none;
+                }}
+            </style>
+            </head>
+            <body>
 
+            <input type="text" id="searchInput" oninput="filterBarang()" placeholder="🔍 Ketik nama barang... (langsung muncul)" class="search-box" autofocus />
             <div id="barangContainer"></div>
 
             <script>
                 const dataBarang = {json_barang};
+                const webhookUrl = "{webhook_url}";
+                const deptCode = "{dept_code}";
+                const periodeSec = "{periode_sekarang}";
+
+                function toggleAction(idx) {{
+                    const panel = document.getElementById('panel-' + idx);
+                    if (panel.style.display === 'flex') {{
+                        panel.style.display = 'none';
+                    }} else {{
+                        // Sembunyikan panel lain
+                        document.querySelectorAll('.action-panel').forEach(el => el.style.display = 'none');
+                        panel.style.display = 'flex';
+                    }}
+                }}
 
                 function filterBarang() {{
                     const query = document.getElementById('searchInput').value.toLowerCase().trim();
@@ -242,83 +307,78 @@ else:
                     );
 
                     if (filtered.length === 0) {{
-                        container.innerHTML = '<div style="color: #ef4444; padding: 10px;">Barang tidak ditemukan...</div>';
+                        container.innerHTML = '<div style="color: #ef4444; padding: 10px; font-size: 14px;">Barang tidak ditemukan...</div>';
                         return;
                     }}
 
-                    // Tampilkan maksimal 20 item agar ringan saat di-scroll
-                    const itemsToDisplay = filtered.slice(0, 20);
+                    const itemsToDisplay = filtered.slice(0, 25);
 
-                    itemsToDisplay.forEach(item => {{
+                    itemsToDisplay.forEach((item, index) => {{
                         const formattedPrice = new Intl.NumberFormat('id-ID', {{ style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }}).format(item.harga);
                         
                         const itemHtml = `
-                            <div class="item-card-row" style="background-color: #1e293b; padding: 12px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 10px; border-left: 4px solid #3b82f6;">
-                                <div style="font-weight: bold; color: #60a5fa; font-size: 15px;">📌 ${{item.nama}}</div>
-                                <div style="color: #34d399; font-weight: bold; font-size: 14px; margin-top: 2px;">
-                                    ${{formattedPrice}} <span style="color: #94a3b8; font-weight: normal; font-size: 12px;">/ ${{item.satuan}}</span>
+                            <div class="item-card" onclick="toggleAction(${{index}})">
+                                <div class="item-title">📌 ${{item.nama}}</div>
+                                <div class="item-price">${{formattedPrice}} <span class="item-unit">/ ${{item.satuan}}</span></div>
+                                
+                                <div class="action-panel" id="panel-${{index}}" onclick="event.stopPropagation()">
+                                    <input type="number" id="qty-${{index}}" value="1" min="1" class="qty-input" placeholder="Qty" />
+                                    <button class="add-btn" onclick="tambahBarang('${{item.nama}}', '${{item.satuan}}', ${{item.harga}}, ${{index}})">➕ Tambah</button>
                                 </div>
+                                <div class="status-msg" id="status-${{index}}"></div>
                             </div>
                         `;
                         container.innerHTML += itemHtml;
                     }});
                 }}
 
-                // Jalankan filter awal
+                function tambahBarang(nama, satuan, harga, idx) {{
+                    const qtyInput = document.getElementById('qty-' + idx);
+                    const qtyVal = parseInt(qtyInput.value) || 1;
+                    const subtotal = harga * qtyVal;
+                    const statusEl = document.getElementById('status-' + idx);
+
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#38bdf8';
+                    statusEl.innerText = '⏳ Menyimpan...';
+
+                    const payload = {{
+                        departemen: deptCode,
+                        periode: periodeSec,
+                        nama_barang: nama,
+                        satuan: satuan,
+                        harga: harga,
+                        qty: qtyVal,
+                        subtotal: subtotal
+                    }};
+
+                    if (webhookUrl && webhookUrl.includes('http')) {{
+                        fetch(webhookUrl, {{
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify(payload)
+                        }}).then(() => {{
+                            statusEl.style.color = '#34d399';
+                            statusEl.innerText = '✅ Tersimpan! (' + qtyVal + ' ' + satuan + ')';
+                        }}).catch(err => {{
+                            statusEl.style.color = '#ef4444';
+                            statusEl.innerText = '❌ Gagal mengirim data.';
+                        }});
+                    }} else {{
+                        statusEl.style.color = '#34d399';
+                        statusEl.innerText = '✅ Berhasil ditambahkan!';
+                    }}
+                }}
+
                 filterBarang();
             </script>
+            </body>
+            </html>
             """
             
-            # Render HTML Filter Instant
-            st.components.v1.html(live_search_html, height=480, scrolling=True)
-
-            # INPUT BARANG TERPILIH UNTUK MASUK KE Google Sheet / KERANJANG
-            st.markdown("---")
-            st.subheader("➕ Tambah Barang ke Pengajuan")
-            
-            pilihan_nama = st.selectbox("Pilih Barang dari Daftar Terfilter:", ["-- Pilih Barang --"] + list(df_barang['Nama Barang'].dropna().unique()))
-            
-            if pilihan_nama != "-- Pilih Barang --":
-                row_sel = df_barang[df_barang['Nama Barang'] == pilihan_nama].iloc[0]
-                nama_sel = str(row_sel['Nama Barang'])
-                satuan_sel = str(row_sel['Satuan'])
-                harga_sel = float(re.sub(r'[^0-9]', '', str(row_sel['Harga']))) if pd.notnull(row_sel['Harga']) else 0
-
-                c1, c2 = st.columns([1, 1])
-                with c1:
-                    qty_input = st.number_input("Jumlah (Qty):", min_value=1, value=1, step=1)
-                with c2:
-                    st.write("")
-                    st.write("")
-                    if st.button("➕ Tambah"):
-                        subtotal_calc = harga_sel * qty_input
-                        dept_code = st.session_state.role.replace(" ", "")
-                        
-                        payload = {
-                            "departemen": dept_code,
-                            "periode": periode_sekarang,
-                            "nama_barang": nama_sel,
-                            "satuan": satuan_sel,
-                            "harga": harga_sel,
-                            "qty": qty_input,
-                            "subtotal": subtotal_calc
-                        }
-                        
-                        if webhook_url and "http" in webhook_url:
-                            res = requests.post(webhook_url, json=payload)
-                            if res.status_code == 200:
-                                st.success(f"✅ {nama_sel} ({qty_input} {satuan_sel}) ditambahkan!")
-                            else:
-                                st.error("Gagal mengirim ke Google Sheet.")
-                        
-                        st.session_state.keranjang.append(payload)
-
-            # TABEL KERANJANG BELANJA
-            if st.session_state.keranjang:
-                st.markdown("---")
-                st.subheader("🛒 Pesanan Tersimpan Periode Ini")
-                df_cart = pd.DataFrame(st.session_state.keranjang)
-                st.dataframe(df_cart[['nama_barang', 'qty', 'satuan', 'subtotal']], use_container_width=True)
+            # Render komponen live search
+            st.components.v1.html(live_search_html, height=520, scrolling=True)
 
         except Exception as e:
             st.error(f"Gagal membaca database. Error: {e}")
