@@ -185,7 +185,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. STAFF CATALOG (NATIVE DYNAMIC & STICKY SEARCH)
+# 3. STAFF CATALOG (MODERN DESIGN & STICKY SEARCH)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -220,15 +220,13 @@ else:
             )
 
             # ------------------------------------------------------------------
-            # 1. KOLOM PENCARIAN STATIS / STICKY (Tidak ikut tergulir)
+            # 1. KOLOM PENCARIAN STATIS / STICKY 
             # ------------------------------------------------------------------
-            search_container = st.container()
-            with search_container:
-                search_query = st.text_input(
-                    "🔍 Cari Nama Barang:", 
-                    placeholder="Ketik nama barang... (Filter dinamis)",
-                    key="sticky_search_input"
-                )
+            search_query = st.text_input(
+                "🔍 Cari Nama Barang:", 
+                placeholder="⚡ Ketik nama barang... (Filter otomatis & instan)",
+                key="sticky_search_input"
+            )
 
             # Filter data frame secara langsung (Dynamic Live Search)
             if search_query:
@@ -237,46 +235,68 @@ else:
                 filtered_df = df_barang.copy()
 
             # Tambahkan kolom kontrol untuk tabel interaktif
-            filtered_df['Pilih'] = False
-            filtered_df['Qty'] = 1
+            filtered_df.insert(0, 'Pilih', False)
+            filtered_df['Jumlah (Qty)'] = 1
 
             # ------------------------------------------------------------------
-            # 2. AREA DAFTAR BARANG YANG BISA DIGULIR (Scrollable Container)
+            # 2. TABEL BARANG MODERN (DATA EDITOR WITH CUSTOM CONFIG)
             # ------------------------------------------------------------------
-            st.write(f"Menampilkan **{len(filtered_df)}** barang.")
+            st.caption(f"📊 Menampilkan **{len(filtered_df)}** barang tersedia.")
             
-            # Kontainer dengan tinggi tetap agar bisa di-scroll tanpa menggeser kolom pencarian di atas
-            with st.container(height=380):
+            # Form UI & Data Editor Modern
+            with st.form("catalog_form"):
                 edited_df = st.data_editor(
-                    filtered_df[['Pilih', 'Nama Barang', 'Satuan', 'Harga_Clean', 'Qty']],
+                    filtered_df[['Pilih', 'Nama Barang', 'Satuan', 'Harga_Clean', 'Jumlah (Qty)']],
                     column_config={
-                        "Pilih": st.column_config.CheckboxColumn("Tambah", default=False),
-                        "Nama Barang": st.column_config.TextColumn("Nama Barang", disabled=True),
-                        "Satuan": st.column_config.TextColumn("Satuan", disabled=True),
-                        "Harga_Clean": st.column_config.NumberColumn("Harga (Rp)", format="Rp %'d", disabled=True),
-                        "Qty": st.column_config.NumberColumn("Jumlah (Qty)", min_value=1, step=1, required=True)
+                        "Pilih": st.column_config.CheckboxColumn(
+                            "🛒 Pilih", 
+                            help="Centang untuk menambah ke keranjang",
+                            default=False
+                        ),
+                        "Nama Barang": st.column_config.TextColumn(
+                            "📦 Nama Barang", 
+                            disabled=True
+                        ),
+                        "Satuan": st.column_config.TextColumn(
+                            "🏷️ Satuan", 
+                            disabled=True
+                        ),
+                        "Harga_Clean": st.column_config.NumberColumn(
+                            "💰 Harga Unit", 
+                            format="Rp %'d", 
+                            disabled=True
+                        ),
+                        "Jumlah (Qty)": st.column_config.NumberColumn(
+                            "🔢 Qty", 
+                            min_value=1, 
+                            step=1, 
+                            required=True
+                        )
                     },
                     hide_index=True,
                     use_container_width=True,
+                    height=360,
                     key="catalog_editor"
                 )
 
-            # ------------------------------------------------------------------
-            # 3. EKSEKUSI TAMBAH KE KERANJANG
-            # ------------------------------------------------------------------
-            dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
-            periode_sec = datetime.now().strftime("%B%Y")
+                # Tombol Aksi Modern yang Menyatu dengan Tabel
+                submit_button = st.form_submit_button("➕ Masukkan Barang Terpilih ke Keranjang", type="primary", use_container_width=True)
 
-            # Tombol proses barang yang dicentang
-            items_to_add = edited_df[edited_df['Pilih'] == True]
-            
-            if not items_to_add.empty:
-                if st.button(f"➕ Masukkan {len(items_to_add)} Barang Terpilih ke Keranjang", type="primary"):
+            # ------------------------------------------------------------------
+            # 3. LOGIKA EKSEKUSI TAMBAH KE KERANJANG
+            # ------------------------------------------------------------------
+            if submit_button:
+                items_to_add = edited_df[edited_df['Pilih'] == True]
+                
+                if not items_to_add.empty:
+                    dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
+                    periode_sec = datetime.now().strftime("%B%Y")
+
                     for _, row in items_to_add.iterrows():
                         add_nama = row['Nama Barang']
                         add_satuan = row['Satuan']
                         add_harga = float(row['Harga_Clean'])
-                        add_qty = int(row['Qty'])
+                        add_qty = int(row['Jumlah (Qty)'])
                         add_subtotal = add_harga * add_qty
 
                         found = False
@@ -298,7 +318,7 @@ else:
                                 "subtotal": add_subtotal
                             })
 
-                        # Send to Webhook Google Sheet
+                        # Webhook
                         if webhook_url and "http" in webhook_url:
                             payload = {
                                 "departemen": dept_code,
@@ -314,8 +334,10 @@ else:
                             except:
                                 pass
 
-                    st.success("Barang berhasil ditambahkan ke keranjang!")
+                    st.toast(f"✅ Berhasil menambah {len(items_to_add)} barang ke keranjang!", icon="🛒")
                     st.rerun()
+                else:
+                    st.warning("⚠️ Silakan centang minimal satu barang pada kolom 'Pilih' terlebih dahulu.")
 
             # ==========================================
             # TABEL KERANJANG BELANJA
