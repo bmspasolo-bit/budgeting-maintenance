@@ -11,160 +11,139 @@ URL_SHEET_DEFAULT = "https://docs.google.com/spreadsheets/d/1dhbkNELRxIa9HAexkpT
 WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzfJdpAGYAD09r-q2yL4L7u2DBWein3N5wH5qI9R2QY5apPoLeKkh/exec"
 # ==============================================================================
 
-# 1. Konfigurasi Halaman & Styling Font Roboto & Kontras Terang (Pop-up Dropdown Fixed)
+# Konfigurasi Halaman
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
+# CSS KONTRASTING & MOBILE FRIENDLY (FIX DARK DROPDOWN & INPUTS)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 
-    /* Paksa background aplikasi & kontras teks agar selalu jelas (Mobile Friendly) */
-    .stAppViewContainer, .stApp {
-        background-color: #f8fafc !important;
+    /* Terapkan Font Utama */
+    html, body, [class*="css"] {
         font-family: 'Roboto', sans-serif !important;
     }
 
-    /* Pengaturan Semua Teks & Label */
+    /* Paksa background halaman netral terang */
+    .stApp {
+        background-color: #0f172a !important; /* Tema Gelap Elegan Default */
+        color: #f8fafc !important;
+    }
+
+    /* SEMUA TEKS DAN LABEL DIPAKSA KONTRAS TERANG */
     h1, h2, h3, h4, h5, h6, p, span, label, div, td, th {
-        font-family: 'Roboto', sans-serif !important;
-        color: #0f172a !important; /* Warna teks gelap tegas */
+        color: #f8fafc !important;
     }
 
-    /* Styling Input Box & Selectbox Utama */
-    div[data-baseweb="select"] > div, input {
-        background-color: #ffffff !important;
-        color: #0f172a !important;
-        border: 1px solid #cbd5e1 !important;
-        border-radius: 6px !important;
+    /* STYLING INPUT BOX & DROPDOWN (PASTE / KETIK / PILIH) */
+    div[data-baseweb="select"] > div, 
+    div[data-baseweb="input"] > div, 
+    input, 
+    textarea {
+        background-color: #1e293b !important;
+        color: #ffffff !important;
+        border: 1px solid #475569 !important;
+        border-radius: 8px !important;
     }
 
-    /* PERBAIKAN DROPDOWN POP-UP (MENU MELAYANG SAAT DIKLIK) */
+    /* PAKSA WARNA TEKS DALAM INPUT AGAR TETAP TERANG TERLIHAT */
+    input::placeholder, textarea::placeholder {
+        color: #94a3b8 !important;
+    }
+
+    /* STYLING POPUP DROPDOWN (SAAT DIKLIK) */
     div[data-baseweb="popover"], 
     div[data-baseweb="menu"], 
     ul[role="listbox"],
     li[role="option"] {
-        background-color: #ffffff !important;
-        color: #0f172a !important;
+        background-color: #1e293b !important;
+        color: #ffffff !important;
     }
     
-    /* Hover/Pilihan pada Dropdown */
+    /* Highlight saat item dropdown di-hover / dipilih */
     li[role="option"]:hover, li[role="option"][aria-selected="true"] {
-        background-color: #e2e8f0 !important;
-        color: #1d4ed8 !important;
+        background-color: #3b82f6 !important;
+        color: #ffffff !important;
     }
 
-    /* Teks dalam Dropdown / Selectbox */
+    /* Styling Teks Dropdown yang Terpilih */
     div[data-baseweb="select"] * {
-        color: #0f172a !important;
+        color: #ffffff !important;
     }
 
-    /* Styling Tombol Utama */
+    /* BUTTON UTAMA */
     .stButton>button { 
-        background-color: #1d4ed8 !important; 
+        background-color: #2563eb !important; 
         color: #ffffff !important; 
-        border-radius: 6px !important; 
-        font-weight: 600 !important; 
-        font-size: 14px !important;
+        border-radius: 8px !important; 
+        font-weight: 700 !important; 
+        font-size: 15px !important;
         width: 100% !important; 
-        height: 42px !important; 
+        height: 45px !important; 
         border: none !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2) !important;
+    }
+    .stButton>button:hover {
+        background-color: #1d4ed8 !important;
     }
     
-    /* Sidebar Background & Teks */
+    /* SIDEBAR */
     section[data-testid="stSidebar"] { 
-        background-color: #f1f5f9 !important; 
-    }
-    section[data-testid="stSidebar"] * {
-        color: #0f172a !important;
+        background-color: #1e293b !important; 
+        border-right: 1px solid #334155 !important;
     }
     
-    /* Ukuran Judul Ringkas & Proporsional */
-    h1 { font-size: 22px !important; font-weight: 700 !important; }
-    h2 { font-size: 18px !important; font-weight: 700 !important; }
-    h3 { font-size: 16px !important; font-weight: 600 !important; }
-    
-    /* Kartu Barang (Item Card) */
-    .item-card {
-        background-color: #ffffff !important;
-        padding: 14px !important;
-        border-radius: 8px !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
-        margin-top: 10px !important;
-        margin-bottom: 10px !important;
-        border-left: 5px solid #1d4ed8 !important;
-        border: 1px solid #e2e8f0 !important;
+    /* KARTU BARANG (STYLE WA WEB SEARCH RESULT) */
+    .wa-card {
+        background-color: #1e293b !important;
+        padding: 14px 18px !important;
+        border-radius: 10px !important;
+        border-left: 5px solid #3b82f6 !important;
+        border: 1px solid #334155 !important;
+        margin-bottom: 12px !important;
     }
-    .item-title { font-size: 15px !important; font-weight: 700 !important; color: #0f172a !important; }
-    .item-price { font-size: 14px !important; color: #047857 !important; font-weight: 700 !important; margin-top: 4px !important; }
-    .item-unit { font-size: 12px !important; color: #475569 !important; }
-    
-    /* Format Cetak Proposal Admin */
+    .wa-title { 
+        font-size: 16px !important; 
+        font-weight: 700 !important; 
+        color: #60a5fa !important; 
+    }
+    .wa-price { 
+        font-size: 15px !important; 
+        color: #34d399 !important; 
+        font-weight: 700 !important; 
+        margin-top: 2px !important; 
+    }
+    .wa-unit { 
+        font-size: 13px !important; 
+        color: #94a3b8 !important; 
+    }
+
+    /* PRINT LAYOUT FOR ADMIN */
     .print-container {
         background-color: #ffffff !important;
-        padding: 15px !important;
+        padding: 20px !important;
         color: #000000 !important;
-        font-family: 'Roboto', sans-serif !important;
         border-radius: 8px !important;
     }
-    .print-header {
-        text-align: center;
-        border-bottom: 2px solid #000000;
-        padding-bottom: 8px;
-        margin-bottom: 15px;
-    }
-    .print-header h2 {
-        font-size: 16px !important;
-        font-weight: 700 !important;
-        margin: 0 !important;
-        color: #000000 !important;
-    }
-    .print-header h3 {
-        font-size: 13px !important;
-        font-weight: 500 !important;
-        margin-top: 4px !important;
-        color: #000000 !important;
-    }
-    .print-section-title {
-        font-size: 13px !important;
-        font-weight: 700 !important;
-        margin-top: 12px;
-        margin-bottom: 6px;
+    .print-container * {
         color: #000000 !important;
     }
     .summary-box {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 6px;
-        margin-bottom: 15px;
-        font-size: 12px;
+        margin-top: 10px;
+        font-size: 13px;
     }
     .summary-box th, .summary-box td {
         border: 1px solid #333333;
-        padding: 6px 8px;
+        padding: 8px;
         text-align: left;
-        color: #000000 !important;
     }
     .summary-box th { background-color: #f1f5f9; font-weight: 700; }
-    
-    .ttd-table {
-        width: 100%;
-        margin-top: 20px;
-        margin-bottom: 20px;
-        text-align: center;
-        font-size: 12px;
-    }
-    .ttd-space { height: 50px; }
-    
-    @media print {
-        body * { visibility: hidden; }
-        .print-container, .print-container * { visibility: visible; }
-        .print-container { position: absolute; left: 0; top: 0; width: 100%; }
-        .no-print { display: none !important; }
-    }
     </style>
 """, unsafe_allow_html=True)
 
-# Database Password Role Staff & Admin
+# Database Password Role
 ROLE_DB = {
     "Teknisi": "tek2026",
     "Cleaning Service": "cs2026",
@@ -191,10 +170,11 @@ def get_csv_url(url, sheet_name="DataBarang"):
     return url
 
 # ==========================================
-# 2. LANDING PAGE & LOGIN
+# 1. LANDING PAGE & LOGIN
 # ==========================================
 if not st.session_state.logged_in:
-    st.title("🔑 Login Portal Budgeting")
+    st.title("🔑 Portal Login Budgeting")
+    st.caption("Silakan pilih departemen dan masukkan password untuk melanjutkan.")
     
     role_pilihan = st.selectbox("Pilih Akses / Departemen:", list(ROLE_DB.keys()))
     password_input = st.text_input("Kata Sandi (Password):", type="password")
@@ -205,10 +185,10 @@ if not st.session_state.logged_in:
             st.session_state.role = role_pilihan
             st.rerun()
         else:
-            st.error("Kata sandi salah!")
+            st.error("❌ Kata sandi salah!")
 
 # ==========================================
-# 3. HALAMAN KHUSUS ADMIN (CETAK PROPOSAL)
+# 2. HALAMAN KHUSUS ADMIN (CETAK PROPOSAL)
 # ==========================================
 elif st.session_state.role == "Admin":
     periode_sekarang = datetime.now().strftime("%B %Y")
@@ -260,11 +240,10 @@ elif st.session_state.role == "Admin":
 
             html_header = f"""
             <div class="print-container">
-                <div class="print-header">
-                    <h2>PROPOSAL PENGAJUAN ANGGARAN BUILDING MAINTENANCE</h2>
-                    3>PERIODE: {periode_sekarang.upper()}</h3>
-                </div>
-                <div class="print-section-title">A. RINGKASAN ANGGARAN DEPARTEMEN</div>
+                <h2 style="text-align: center; margin-bottom: 5px;">PROPOSAL PENGAJUAN ANGGARAN BUILDING MAINTENANCE</h2>
+                <h3 style="text-align: center; margin-top: 0;">PERIODE: {periode_sekarang.upper()}</h3>
+                <hr>
+                <h4>A. RINGKASAN ANGGARAN DEPARTEMEN</h4>
                 <table class="summary-box">
                     <tr>
                         <th width="8%">No</th>
@@ -278,27 +257,12 @@ elif st.session_state.role == "Admin":
                     <tr><td>5</td><td>Proyek Pengadaan</td><td>Rp {dict_budget.get('Proyek Pengadaan', 0):,.0f}</td></tr>
                     <tr><td>6</td><td>Proyek Perbaikan</td><td>Rp {dict_budget.get('Proyek Perbaikan', 0):,.0f}</td></tr>
                     <tr><td>7</td><td>Boarding House</td><td>Rp {dict_budget.get('Boarding House', 0):,.0f}</td></tr>
-                    <tr style="font-weight: bold; background-color: #f1f5f9;">
+                    <tr style="font-weight: bold; background-color: #e2e8f0;">
                         <td colspan="2" style="text-align: right;">TOTAL ESTIMASI ANGGARAN:</td>
                         <td>Rp {total_keseluruhan:,.0f}</td>
                     </tr>
                 </table>
-                <div class="print-section-title">B. LEMBAR PERSETUJUAN</div>
-                <table class="ttd-table">
-                    <tr>
-                        <td width="50%">Diajukan Oleh,<br><b>Building Mgr</b></td>
-                        <td width="50%">Disetujui Oleh,<br><b>General Mgr</b></td>
-                    </tr>
-                    <tr>
-                        <td class="ttd-space"></td>
-                        <td class="ttd-space"></td>
-                    </tr>
-                    <tr>
-                        <td><b><u>Ali Sukmawan</u></b></td>
-                        <td><b><u>Aristya Pambudi</u></b></td>
-                    </tr>
-                </table>
-                <div class="print-section-title">C. RINCIAN BARANG PER DEPARTEMEN</div>
+                <h4>B. RINCIAN BARANG PER DEPARTEMEN</h4>
             </div>
             """
             st.markdown(html_header, unsafe_allow_html=True)
@@ -306,7 +270,7 @@ elif st.session_state.role == "Admin":
             cols_show = ['Nama Barang', 'Satuan', 'Harga Satuan', 'Jumlah (Qty)', 'Subtotal']
             
             for idx, (code_dept, name_dept) in enumerate(list_dept, 1):
-                st.markdown(f"**{idx}. Departemen {name_dept}**")
+                st.markdown(f"### {idx}. Departemen {name_dept}")
                 df_curr = dict_df.get(name_dept, pd.DataFrame(columns=cols_show))
                 df_display = df_curr[cols_show] if all(c in df_curr.columns for c in cols_show) else df_curr
                 st.dataframe(df_display, use_container_width=True)
@@ -317,11 +281,9 @@ elif st.session_state.role == "Admin":
 
         except Exception as e:
             st.error(f"Gagal memuat proposal. Error: {e}")
-    else:
-        st.info("👈 Silakan isi link database Google Sheet default di dalam file app.py.")
 
 # ==========================================
-# 4. HALAMAN UTAMA STAFF
+# 3. HALAMAN UTAMA STAFF (DINAMIS WA WEB SEARCH)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -341,7 +303,7 @@ else:
         url_sheet = st.text_input("Link Google Sheet Utama:", value=URL_SHEET_DEFAULT)
         webhook_url = st.text_input("URL Web App Google Script:", value=WEBHOOK_URL_DEFAULT)
 
-    st.title(f"📦 Pilih Barang - {st.session_state.role}")
+    st.title(f"📦 Katalog Barang — {st.session_state.role}")
     
     if url_sheet and "http" in url_sheet:
         try:
@@ -349,41 +311,49 @@ else:
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            search_text = st.text_input("🔍 Ketik nama barang:", placeholder="Contoh: ac, pel, semen...")
+            # PENCARIAN DINAMIS ALA WA WEB
+            search_text = st.text_input(
+                "💬 Cari barang (seperti WA Web):", 
+                placeholder="Ketik nama barang... (cth: ac, semen, sapu, lampu)"
+            )
 
+            # Filter Otomatis & Live
             if search_text.strip():
                 df_filtered = df_barang[df_barang['Nama Barang'].astype(str).str.contains(search_text, case=False, na=False)]
             else:
-                df_filtered = df_barang
+                df_filtered = df_barang.head(10) # Menampilkan 10 awal jika belum mengetik
 
-            list_nama_barang = ["-- Pilih dari daftar barang --"] + list(df_filtered['Nama Barang'].dropna().unique())
+            st.caption(f"Menampilkan {len(df_filtered)} barang yang cocok:")
 
-            pilihan_barang = st.selectbox("👇 Pilih barang dari dropdown:", list_nama_barang)
-
-            if pilihan_barang != "-- Pilih dari daftar barang --":
-                row_barang = df_barang[df_barang['Nama Barang'] == pilihan_barang].iloc[0]
-                
-                nama = str(row_barang['Nama Barang'])
-                satuan = str(row_barang['Satuan'])
-                harga = row_barang['Harga']
+            # Render Barang Langsung di Kolom Bawah secara Dinamis
+            for idx, row in df_filtered.iterrows():
+                nama = str(row['Nama Barang'])
+                satuan = str(row['Satuan'])
+                harga = row['Harga']
                 harga_clean = float(re.sub(r'[^0-9]', '', str(harga))) if pd.notnull(harga) else 0
 
+                # Card Tampilan Barang
                 st.markdown(f"""
-                    <div class="item-card">
-                        <div class="item-title">📌 {nama}</div>
-                        <div class="item-price">Harga Satuan: Rp {harga_clean:,.0f}</div>
-                        <div class="item-unit">Satuan: {satuan}</div>
+                    <div class="wa-card">
+                        <div class="wa-title">📌 {nama}</div>
+                        <div class="wa-price">Rp {harga_clean:,.0f} <span class="wa-unit">/ {satuan}</span></div>
                     </div>
                 """, unsafe_allow_html=True)
-                
-                with st.form("form_pesan", clear_on_submit=True):
-                    qty = st.number_input("Masukkan Jumlah (Qty):", min_value=1, value=1, step=1)
-                    subtotal_estimasi = harga_clean * qty
-                    st.write(f"💰 Total Subtotal: **Rp {subtotal_estimasi:,.0f}**")
-                    
-                    submitted = st.form_submit_button("➕ Simpan ke Pengajuan")
-                    
-                    if submitted:
+
+                # Form Input Jumlah (Qty) & Tambah
+                col_qty, col_btn = st.columns([1, 2])
+                with col_qty:
+                    qty_input = st.number_input(
+                        "Qty", 
+                        min_value=1, 
+                        value=1, 
+                        step=1, 
+                        key=f"qty_{idx}"
+                    )
+                with col_btn:
+                    st.write("") # Spacing
+                    if st.button(f"➕ Tambah {nama}", key=f"btn_{idx}"):
+                        subtotal_calc = harga_clean * qty_input
                         dept_code = st.session_state.role.replace(" ", "")
                         
                         payload = {
@@ -392,31 +362,28 @@ else:
                             "nama_barang": nama,
                             "satuan": satuan,
                             "harga": harga_clean,
-                            "qty": qty,
-                            "subtotal": subtotal_estimasi
+                            "qty": qty_input,
+                            "subtotal": subtotal_calc
                         }
                         
                         if webhook_url and "http" in webhook_url:
                             res = requests.post(webhook_url, json=payload)
                             if res.status_code == 200:
-                                st.success(f"✅ {nama} ({qty} {satuan}) berhasil disimpan ke Google Sheet!")
+                                st.success(f"✅ {nama} ({qty_input} {satuan}) tersimpan ke Sheet!")
                             else:
-                                st.error("Gagal mengirim data ke Google Sheet.")
-                        else:
-                            st.warning("Data tersimpan sementara di memori aplikasi.")
-
+                                st.error("Gagal terhubung ke Google Sheet.")
+                        
                         st.session_state.keranjang.append(payload)
+                        st.rerun()
 
-            else:
-                st.info("💡 Ketik kata kunci di atas atau pilih langsung dari menu drop-down.")
-
+            # KERANJANG BELANJA
             if st.session_state.keranjang:
                 st.markdown("---")
-                st.subheader("🛒 Pesanan Tersimpan Saat Ini")
+                st.subheader("🛒 Pesanan Tersimpan Periode Ini")
                 df_cart = pd.DataFrame(st.session_state.keranjang)
                 st.dataframe(df_cart[['nama_barang', 'qty', 'satuan', 'subtotal']], use_container_width=True)
 
         except Exception as e:
             st.error(f"Gagal membaca database. Error: {e}")
     else:
-        st.info("👈 Silakan isi link database Google Sheet default di dalam file app.py.")
+        st.info("👈 Silakan konfigurasi link Google Sheet.")
