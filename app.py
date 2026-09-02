@@ -8,10 +8,10 @@ import requests
 # CONFIG DATABASE PERMANEN
 # ==============================================================================
 URL_SHEET_DEFAULT = "https://docs.google.com/spreadsheets/d/1dhbkNELRxIa9HAexkpT13t2cbg3sqdRp5yBr7af9bcw/edit?usp=sharing"
-WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGBtdyZwB93hzfJdpAGYADO9r-q2yL4L7u2DBWein3N5wH5qI9R2QY5apPoLeKkh/exec"
+WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzfJdpAGYAD09r-q2yL4L7u2DBWein3N5wH5qI9R2QY5apPoLeKkh/exec"
 # ==============================================================================
 
-# 1. Konfigurasi Halaman & Styling Font Roboto & Kontras Terang
+# 1. Konfigurasi Halaman & Styling Font Roboto & Kontras Terang (Pop-up Dropdown Fixed)
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
 st.markdown("""
@@ -30,12 +30,32 @@ st.markdown("""
         color: #0f172a !important; /* Warna teks gelap tegas */
     }
 
-    /* Styling Input Box & Selectbox agar kontras tinggi & terbaca */
+    /* Styling Input Box & Selectbox Utama */
     div[data-baseweb="select"] > div, input {
         background-color: #ffffff !important;
         color: #0f172a !important;
         border: 1px solid #cbd5e1 !important;
         border-radius: 6px !important;
+    }
+
+    /* PERBAIKAN DROPDOWN POP-UP (MENU MELAYANG SAAT DIKLIK) */
+    div[data-baseweb="popover"], 
+    div[data-baseweb="menu"], 
+    ul[role="listbox"],
+    li[role="option"] {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+    }
+    
+    /* Hover/Pilihan pada Dropdown */
+    li[role="option"]:hover, li[role="option"][aria-selected="true"] {
+        background-color: #e2e8f0 !important;
+        color: #1d4ed8 !important;
+    }
+
+    /* Teks dalam Dropdown / Selectbox */
+    div[data-baseweb="select"] * {
+        color: #0f172a !important;
     }
 
     /* Styling Tombol Utama */
@@ -78,7 +98,7 @@ st.markdown("""
     .item-price { font-size: 14px !important; color: #047857 !important; font-weight: 700 !important; margin-top: 4px !important; }
     .item-unit { font-size: 12px !important; color: #475569 !important; }
     
-    /* Format Cetak Proposal Admin (Font Diperkecil & Proporsional) */
+    /* Format Cetak Proposal Admin */
     .print-container {
         background-color: #ffffff !important;
         padding: 15px !important;
@@ -242,7 +262,7 @@ elif st.session_state.role == "Admin":
             <div class="print-container">
                 <div class="print-header">
                     <h2>PROPOSAL PENGAJUAN ANGGARAN BUILDING MAINTENANCE</h2>
-                    <h3>PERIODE: {periode_sekarang.upper()}</h3>
+                    3>PERIODE: {periode_sekarang.upper()}</h3>
                 </div>
                 <div class="print-section-title">A. RINGKASAN ANGGARAN DEPARTEMEN</div>
                 <table class="summary-box">
