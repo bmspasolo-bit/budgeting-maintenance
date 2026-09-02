@@ -13,7 +13,7 @@ WEBHOOK_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbzVQGbtdyZwB93hzf
 
 st.set_page_config(page_title="E-Katalog Budgeting & Admin Portal", layout="wide")
 
-# STYLING GLOBAL & ROBOTO FONT (DARK THEME KONTRASTING)
+# STYLING GLOBAL & ROBOTO FONT
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
@@ -31,6 +31,7 @@ st.markdown("""
         color: #f8fafc !important;
     }
 
+    /* Styling Input Text & Number */
     div[data-baseweb="input"] > div, input {
         background-color: #1e293b !important;
         color: #ffffff !important;
@@ -42,14 +43,16 @@ st.markdown("""
         color: #94a3b8 !important;
     }
 
+    /* Button Styling */
     .stButton>button { 
         background-color: #2563eb !important; 
         color: #ffffff !important; 
         border-radius: 8px !important; 
         font-weight: 700 !important; 
-        font-size: 14px !important;
+        font-size: 13px !important;
         width: 100% !important; 
         border: none !important;
+        padding: 6px 10px !important;
     }
     .stButton>button:hover {
         background-color: #1d4ed8 !important;
@@ -60,19 +63,20 @@ st.markdown("""
         border-right: 1px solid #334155 !important;
     }
 
-    .item-card-box {
+    /* Card Item Style */
+    .item-card-row {
         background-color: #1e293b;
         border: 1px solid #334155;
         border-left: 4px solid #3b82f6;
         border-radius: 8px;
         padding: 10px 14px;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
     }
-    .item-title-text { font-size: 15px; font-weight: 700; color: #60a5fa; }
-    .item-price-text { font-size: 14px; font-weight: 700; color: #34d399; }
-    .item-unit-text { color: #94a3b8; font-weight: normal; font-size: 12px; }
+    .item-title { font-size: 15px; font-weight: 700; color: #60a5fa; }
+    .item-price { font-size: 14px; font-weight: 700; color: #34d399; }
+    .item-unit { color: #94a3b8; font-weight: normal; font-size: 12px; }
 
-    .cart-summary {
+    .cart-summary-box {
         background-color: #1e293b;
         padding: 15px;
         border-radius: 8px;
@@ -109,7 +113,7 @@ def get_csv_url(url, sheet_name="DataBarang"):
     return url
 
 # ==========================================
-# 1. LANDING PAGE & LOGIN
+# 1. LOGIN
 # ==========================================
 if not st.session_state.logged_in:
     st.title("🔑 Portal Login Budgeting")
@@ -127,7 +131,7 @@ if not st.session_state.logged_in:
             st.error("❌ Kata sandi salah!")
 
 # ==========================================
-# 2. HALAMAN KHUSUS ADMIN
+# 2. ADMIN PANEL
 # ==========================================
 elif st.session_state.role == "Admin":
     periode_sekarang = datetime.now().strftime("%B %Y")
@@ -148,7 +152,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. HALAMAN UTAMA STAFF (LIVE SEARCH + TOMBOL STREAMLIT + KERANJANG)
+# 3. STAFF CATALOG & INSTANT CARDS
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -176,46 +180,55 @@ else:
             df_barang = pd.read_csv(csv_url)
             df_barang.columns = df_barang.columns.str.strip()
 
-            # SEARCH INPUT INSTANT (MURNI STREAMLIT)
-            search_query = st.text_input("🔍 Ketik Nama Barang (Real-Time Search):", placeholder="Ketik nama barang... (cth: ac, semen, lampu)")
+            # PENCARIAN DINAMIS INSTAN
+            search_query = st.text_input(
+                "🔍 Cari Barang (Ketik untuk filter langsung):", 
+                placeholder="Ketik nama barang... (contoh: ac, semen, lampu)"
+            )
 
-            # FILTER DATA REAL-TIME
+            # Filter data berdasarkan teks yang diketik
             if search_query.strip():
                 df_filtered = df_barang[df_barang['Nama Barang'].astype(str).str.contains(search_query, case=False, na=False)]
             else:
-                df_filtered = df_barang.head(10) # Tampilkan 10 item teratas jika belum mengetik
+                df_filtered = df_barang.head(12)
 
-            st.caption(f"Menampilkan {len(df_filtered)} barang yang sesuai:")
+            st.caption(f"Menampilkan {len(df_filtered)} barang:")
 
-            # RENDER HASIL PENCARIAN & TOMBOL TAMBAH NATIVE
+            # ITERASI BARANG DENGAN TOMBOL NATIVE
             for idx, row in df_filtered.iterrows():
                 nama = str(row['Nama Barang'])
                 satuan = str(row['Satuan'])
                 harga = row['Harga']
                 harga_clean = float(re.sub(r'[^0-9]', '', str(harga))) if pd.notnull(harga) else 0
 
-                # Kartu Barang
+                # Kartu Barang Roboto Style
                 st.markdown(f"""
-                    <div class="item-card-box">
-                        <div class="item-title-text">📌 {nama}</div>
-                        <div class="item-price-text">Rp {harga_clean:,.0f} <span class="item-unit-text">/ {satuan}</span></div>
+                    <div class="item-card-row">
+                        <div class="item-title">📌 {nama}</div>
+                        <div class="item-price">Rp {harga_clean:,.0f} <span class="item-unit">/ {satuan}</span></div>
                     </div>
                 """, unsafe_allow_html=True)
 
-                # Form Input Qty dan Tombol Tambah yang PASTI BISA DIKLIK
-                col_qty, col_btn = st.columns([1, 2])
+                col_qty, col_btn = st.columns([1, 1.2])
                 with col_qty:
-                    qty_val = st.number_input("Qty", min_value=1, value=1, step=1, key=f"qty_input_{idx}", label_visibility="collapsed")
+                    qty_input = st.number_input(
+                        "Qty", 
+                        min_value=1, 
+                        value=1, 
+                        step=1, 
+                        key=f"qty_field_{idx}", 
+                        label_visibility="collapsed"
+                    )
                 with col_btn:
-                    if st.button("➕ Tambah Ke Keranjang", key=f"btn_add_{idx}"):
+                    if st.button("➕ Tambah", key=f"btn_add_{idx}"):
                         dept_code = st.session_state.role.replace(" ", "")
-                        subtotal_calc = harga_clean * qty_val
+                        subtotal_calc = harga_clean * qty_input
 
-                        # Cek apakah barang sudah ada di keranjang, jika ada update qty
+                        # Update jika barang sudah ada di keranjang
                         found = False
                         for item in st.session_state.keranjang:
                             if item["nama_barang"] == nama:
-                                item["qty"] += qty_val
+                                item["qty"] += qty_input
                                 item["subtotal"] = item["qty"] * item["harga"]
                                 found = True
                                 break
@@ -227,7 +240,7 @@ else:
                                 "nama_barang": nama,
                                 "satuan": satuan,
                                 "harga": harga_clean,
-                                "qty": qty_val,
+                                "qty": qty_input,
                                 "subtotal": subtotal_calc
                             })
 
@@ -239,7 +252,7 @@ else:
                                 "nama_barang": nama,
                                 "satuan": satuan,
                                 "harga": harga_clean,
-                                "qty": qty_val,
+                                "qty": qty_input,
                                 "subtotal": subtotal_calc
                             }
                             try:
@@ -247,11 +260,10 @@ else:
                             except:
                                 pass
 
-                        st.success(f"✅ {nama} ({qty_val} {satuan}) berhasil masuk keranjang!")
                         st.rerun()
 
             # ==========================================
-            # TABEL KERANJANG BELANJA (EDIT & HAPUS)
+            # TABEL RINCIAN KERANJANG BELANJA
             # ==========================================
             st.markdown("---")
             st.subheader("🛒 Isi Keranjang Belanja")
@@ -292,9 +304,9 @@ else:
                     st.markdown("<hr style='margin: 4px 0; border-color: #334155;'>", unsafe_allow_html=True)
 
                 st.markdown(f"""
-                    <div class="cart-summary">
+                    <div class="cart-summary-box">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 16px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN DIAJUKAN:</span>
+                            <span style="font-size: 15px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN DIAJUKAN:</span>
                             <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_nominal:,.0f}</span>
                         </div>
                     </div>
@@ -305,7 +317,7 @@ else:
                     st.rerun()
 
             else:
-                st.info("Keranjang masih kosong. Pilih barang dari hasil pencarian di atas.")
+                st.info("Keranjang masih kosong. Silakan pilih barang di atas.")
 
         except Exception as e:
             st.error(f"Gagal membaca database. Error: {e}")
