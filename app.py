@@ -4,6 +4,7 @@ from datetime import datetime
 import re
 import requests
 import json
+import streamlit.components.v1 as components
 
 # ==============================================================================
 # CONFIG DATABASE PERMANEN
@@ -94,62 +95,6 @@ def get_csv_url(url, sheet_name="DataBarang"):
     return url
 
 # ==========================================
-# MENANGKAP QUERY PARAMETER SECARA RELIABLE
-# ==========================================
-qp = st.query_params
-if "add_nama" in qp:
-    try:
-        add_nama = str(qp["add_nama"])
-        add_satuan = str(qp["add_satuan"])
-        add_harga = float(qp["add_harga"])
-        add_qty = int(qp["add_qty"])
-        add_subtotal = add_harga * add_qty
-        dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
-        periode_sec = datetime.now().strftime("%B%Y")
-
-        found = False
-        for item in st.session_state.keranjang:
-            if item["nama_barang"] == add_nama:
-                item["qty"] += add_qty
-                item["subtotal"] = item["qty"] * item["harga"]
-                found = True
-                break
-        
-        if not found:
-            st.session_state.keranjang.append({
-                "departemen": dept_code,
-                "periode": periode_sec,
-                "nama_barang": add_nama,
-                "satuan": add_satuan,
-                "harga": add_harga,
-                "qty": add_qty,
-                "subtotal": add_subtotal
-            })
-
-        # Kirim ke Webhook Google Sheet
-        webhook_url = st.session_state.get("webhook_url", WEBHOOK_URL_DEFAULT)
-        if webhook_url and "http" in webhook_url:
-            payload = {
-                "departemen": dept_code,
-                "periode": periode_sec,
-                "nama_barang": add_nama,
-                "satuan": add_satuan,
-                "harga": add_harga,
-                "qty": add_qty,
-                "subtotal": add_subtotal
-            }
-            try:
-                requests.post(webhook_url, json=payload, timeout=3)
-            except:
-                pass
-
-    except Exception as e:
-        pass
-    
-    st.query_params.clear()
-    st.rerun()
-
-# ==========================================
 # 1. LOGIN
 # ==========================================
 if not st.session_state.logged_in:
@@ -189,7 +134,7 @@ elif st.session_state.role == "Admin":
     st.info("Fitur cetak proposal admin dapat diakses di halaman ini.")
 
 # ==========================================
-# 3. STAFF CATALOG (LIVE SEARCH REAL-TIME + CLICK FIX)
+# 3. STAFF CATALOG (COMMUNICATION BRIDGE FIX)
 # ==========================================
 else:
     periode_sekarang = datetime.now().strftime("%B%Y")
@@ -233,8 +178,8 @@ else:
 
             json_barang = json.dumps(barang_list)
 
-            # JAVASCRIPT HYBRID REALTIME SEARCH & URL REDIRECT PARENT
-            live_search_html = f"""
+            # HTML & COMPONENT POSTMESSAGE BRIDGE
+            html_code = f"""
             <!DOCTYPE html>
             <html>
             <head>
@@ -271,7 +216,6 @@ else:
                     cursor: pointer; margin-left: 10px; font-size: 13px;
                 }}
                 .add-btn:hover {{ background-color: #1d4ed8; }}
-                .add-btn:active {{ transform: scale(0.98); }}
             </style>
             </head>
             <body>
@@ -281,6 +225,14 @@ else:
 
             <script>
                 const dataBarang = {json_barang};
+
+                function sendToStreamlit(data) {{
+                    window.parent.postMessage({{
+                        isStreamlitMessage: true,
+                        type: "streamlit:setComponentValue",
+                        value: data
+                    }}, "*");
+                }}
 
                 function filterBarang() {{
                     const query = document.getElementById('searchInput').value.toLowerCase().trim();
@@ -311,21 +263,16 @@ else:
                         container.appendChild(itemCard);
 
                         document.getElementById(`btn-${{index}}`).addEventListener('click', function() {{
-                            const qtyVal = document.getElementById(`qty-${{index}}`).value || 1;
-                            sendToStreamlit(item.nama, item.satuan, item.harga, qtyVal);
+                            const qtyVal = parseInt(document.getElementById(`qty-${{index}}`).value || 1);
+                            sendToStreamlit({{
+                                nama: item.nama,
+                                satuan: item.satuan,
+                                harga: item.harga,
+                                qty: qtyVal,
+                                time: new Date().getTime()
+                            }});
                         }});
                     }});
-                }}
-
-                function sendToStreamlit(nama, satuan, harga, qty) {{
-                    const parentUrl = window.top.location.href.split('?')[0];
-                    const params = new URLSearchParams();
-                    params.append('add_nama', nama);
-                    params.append('add_satuan', satuan);
-                    params.append('add_harga', harga);
-                    params.append('add_qty', qty);
-                    
-                    window.top.location.href = parentUrl + '?' + params.toString();
                 }}
 
                 filterBarang();
@@ -333,11 +280,64 @@ else:
             </body>
             </html>
             """
-            
-            st.components.v1.html(live_search_html, height=420, scrolling=True)
+
+            selected_item = components.html(html_code, height=420, scrolling=True)
+
+            # PROSES ITEM DARI EVENT BRIDGE
+            if selected_item and isinstance(selected_item, dict):
+                last_processed = st.session_state.get("last_processed_time", 0)
+                item_time = selected_item.get("time", 0)
+
+                if item_time > last_processed:
+                    st.session_state.last_processed_time = item_time
+                    
+                    add_nama = selected_item["nama"]
+                    add_satuan = selected_item["satuan"]
+                    add_harga = float(selected_item["harga"])
+                    add_qty = int(selected_item["qty"])
+                    add_subtotal = add_harga * add_qty
+                    dept_code = st.session_state.role.replace(" ", "") if st.session_state.role else "General"
+                    periode_sec = datetime.now().strftime("%B%Y")
+
+                    found = False
+                    for item in st.session_state.keranjang:
+                        if item["nama_barang"] == add_nama:
+                            item["qty"] += add_qty
+                            item["subtotal"] = item["qty"] * item["harga"]
+                            found = True
+                            break
+
+                    if not found:
+                        st.session_state.keranjang.append({
+                            "departemen": dept_code,
+                            "periode": periode_sec,
+                            "nama_barang": add_nama,
+                            "satuan": add_satuan,
+                            "harga": add_harga,
+                            "qty": add_qty,
+                            "subtotal": add_subtotal
+                        })
+
+                    # Kirim data ke Webhook Google Sheets
+                    if webhook_url and "http" in webhook_url:
+                        payload = {
+                            "departemen": dept_code,
+                            "periode": periode_sec,
+                            "nama_barang": add_nama,
+                            "satuan": add_satuan,
+                            "harga": add_harga,
+                            "qty": add_qty,
+                            "subtotal": add_subtotal
+                        }
+                        try:
+                            requests.post(webhook_url, json=payload, timeout=3)
+                        except:
+                            pass
+
+                    st.rerun()
 
             # ==========================================
-            # TABEL KERANJANG BELANJA (WORKING 100%)
+            # TABEL KERANJANG BELANJA
             # ==========================================
             st.markdown("---")
             st.subheader("🛒 Isi Keranjang Belanja")
