@@ -313,4 +313,82 @@ else:
                 }}
 
                 function tambahKeKeranjang(namaEnc, satuanEnc, harga, idx) {{
-                    const
+                    const qtyVal = document.getElementById('qty-' + idx).value || 1;
+                    const topWin = window.top || window.parent || window;
+                    const baseUrl = topWin.location.href.split('?')[0];
+                    topWin.location.href = baseUrl + '?add_nama=' + namaEnc + '&add_satuan=' + satuanEnc + '&add_harga=' + harga + '&add_qty=' + qtyVal;
+                }}
+
+                filterBarang();
+            </script>
+            </body>
+            </html>
+            """
+            
+            st.components.v1.html(live_search_html, height=380, scrolling=True)
+
+            # ==========================================
+            # TABEL KERANJANG BELANJA (EDIT & HAPUS WORKING 100%)
+            # ==========================================
+            st.markdown("---")
+            st.subheader("🛒 Isi Keranjang Belanja")
+
+            if st.session_state.keranjang:
+                total_nominal = 0
+                to_delete = None
+                
+                for c_idx, item in enumerate(st.session_state.keranjang):
+                    total_nominal += item["subtotal"]
+                    
+                    with st.container():
+                        col_info, col_qty, col_sub, col_del = st.columns([3, 1.5, 2, 1])
+                        
+                        with col_info:
+                            st.markdown(f"**📌 {item['nama_barang']}** \n<small style='color: #94a3b8;'>Rp {item['harga']:,.0f} / {item['satuan']}</small>", unsafe_allow_html=True)
+                        
+                        with col_qty:
+                            new_qty = st.number_input(
+                                "Qty", 
+                                min_value=1, 
+                                value=int(item['qty']), 
+                                key=f"cart_qty_key_{c_idx}", 
+                                label_visibility="collapsed"
+                            )
+                            if new_qty != item['qty']:
+                                st.session_state.keranjang[c_idx]['qty'] = new_qty
+                                st.session_state.keranjang[c_idx]['subtotal'] = new_qty * item['harga']
+                                st.rerun()
+
+                        with col_sub:
+                            st.markdown(f"**Rp {item['subtotal']:,.0f}**")
+                            
+                        with col_del:
+                            if st.button("🗑️", key=f"cart_del_key_{c_idx}"):
+                                to_delete = c_idx
+                    
+                    st.markdown("<hr style='margin: 4px 0; border-color: #334155;'>", unsafe_allow_html=True)
+
+                if to_delete is not None:
+                    st.session_state.keranjang.pop(to_delete)
+                    st.rerun()
+
+                st.markdown(f"""
+                    <div class="cart-summary-box">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 15px; font-weight: bold; color: #ffffff;">TOTAL ANGGARAN DIAJUKAN:</span>
+                            <span style="font-size: 18px; font-weight: bold; color: #34d399;">Rp {total_nominal:,.0f}</span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                if st.button("🔴 Kosongkan Semua Keranjang", key="clear_all_cart"):
+                    st.session_state.keranjang = []
+                    st.rerun()
+
+            else:
+                st.info("Keranjang masih kosong. Pilih barang dari daftar pencarian di atas.")
+
+        except Exception as e:
+            st.error(f"Gagal membaca database. Error: {e}")
+    else:
+        st.info("👈 Silakan atur link Google Sheet terlebih dahulu.")
